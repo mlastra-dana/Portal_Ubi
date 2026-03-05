@@ -1,10 +1,11 @@
 import type { PropsWithChildren } from 'react';
 
-export function AlertBanner({ type, children }: PropsWithChildren<{ type: 'info' | 'warning' | 'success' }>) {
+export function AlertBanner({ type, children }: PropsWithChildren<{ type: 'info' | 'warning' | 'success' | 'error' }>) {
   const styles = {
-    info: 'border-blue-300 bg-blue-500/15 text-blue-100',
-    warning: 'border-amber-300 bg-amber-500/15 text-amber-100',
-    success: 'border-emerald-300 bg-emerald-500/15 text-emerald-100'
+    info: 'border-ubii-blue/40 bg-ubii-blue/10 text-ubii-hover',
+    warning: 'border-amber-300 bg-amber-100 text-amber-800',
+    success: 'border-emerald-300 bg-emerald-100 text-emerald-700',
+    error: 'border-red-300 bg-red-100 text-red-700'
   };
 
   return <div className={`rounded-xl border px-3 py-2 text-sm ${styles[type]}`}>{children}</div>;

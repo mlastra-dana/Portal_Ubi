@@ -8,18 +8,20 @@ export default {
         display: ['Poppins', 'Nunito Sans', 'Segoe UI', 'Helvetica Neue', 'Arial', 'sans-serif']
       },
       colors: {
-        primary: '#379FD9',
-        primaryDark: '#2B8FC6',
-        bgSoft: '#EDF3F7',
-        surfaceMuted: '#E6EEF3',
-        textMain: '#1F2D3A',
-        borderSoft: '#D3DEE8'
+        ubii: {
+          blue: '#4B98CB',
+          hover: '#3E86B6',
+          light: '#F5F9FD',
+          black: '#111111',
+          border: '#E5E7EB',
+          panel: '#FFFFFF'
+        }
       },
       boxShadow: {
-        soft: '0 10px 30px rgba(17,24,39,0.07)'
+        soft: '0 8px 24px rgba(16, 24, 40, 0.08)'
       },
       maxWidth: {
-        content: '1120px'
+        content: '72rem'
       }
     }
   },

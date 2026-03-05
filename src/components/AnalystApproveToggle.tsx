@@ -1,4 +1,5 @@
 import type { ManualReviewDecision } from '../types/onboarding';
+import { PrimaryButton } from './ui/PrimaryButton';
 
 export function AnalystApproveToggle({
   value,
@@ -9,24 +10,18 @@ export function AnalystApproveToggle({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <button
-        type="button"
+      <PrimaryButton
         onClick={() => onChange('approved')}
-        className={`rounded-lg border px-3 py-1.5 text-sm font-semibold ${
-          value === 'approved' ? 'border-emerald-300 bg-emerald-500/20 text-emerald-100' : 'border-slate-500 bg-slate-800 text-slate-200'
-        }`}
+        className={value === 'approved' ? 'ring-2 ring-ubii-blue ring-offset-2' : ''}
       >
         Aprobar
-      </button>
-      <button
-        type="button"
+      </PrimaryButton>
+      <PrimaryButton
         onClick={() => onChange('rejected')}
-        className={`rounded-lg border px-3 py-1.5 text-sm font-semibold ${
-          value === 'rejected' ? 'border-amber-300 bg-amber-500/20 text-amber-100' : 'border-slate-500 bg-slate-800 text-slate-200'
-        }`}
+        className={value === 'rejected' ? 'ring-2 ring-ubii-blue ring-offset-2' : ''}
       >
         No aprobar
-      </button>
+      </PrimaryButton>
     </div>
   );
 }

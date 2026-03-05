@@ -10,7 +10,9 @@
   }
 
   body {
-    @apply bg-slate-950 font-sans text-slate-100 antialiased;
+    @apply font-sans antialiased;
+    background-color: #f5f9fd;
+    color: #111111;
   }
 
   h1,

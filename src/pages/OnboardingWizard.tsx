@@ -5,6 +5,7 @@ import { DocumentUploader } from '../components/DocumentUploader';
 import { ImageAnalysisCard } from '../components/ImageAnalysisCard';
 import { ImageCaptureOrUpload } from '../components/ImageCaptureOrUpload';
 import { Stepper2Steps } from '../components/Stepper2Steps';
+import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { analyzeImage } from '../services/imageAiMock';
 import { simulateOcr } from '../services/ocrMock';
 import type { DocType, ImageItemState, OnboardingSummary, OcrResult } from '../types/onboarding';
@@ -72,21 +73,23 @@ export default function OnboardingWizard() {
 
   const runOcr = async (file: File, docType: DocType) => {
     setProcessingKey(docType, true);
-    const result = await simulateOcr(file, docType);
+    try {
+      const result = await simulateOcr(file, docType);
 
-    if (docType === 'cedula') {
-      setCedulaOcr(result);
-      setFullName(result.extracted.fullName);
-      setCedulaNumber(result.extracted.documentNumber);
-      setCedulaExpiry(result.extracted.expiryDate);
-    } else {
-      setRifOcr(result);
-      setRifNumber(result.extracted.documentNumber);
-      setRifExpiry(result.extracted.expiryDate);
-      if (!fullName) setFullName(result.extracted.fullName);
+      if (docType === 'cedula') {
+        setCedulaOcr(result);
+        setFullName(result.extracted.fullName);
+        setCedulaNumber(result.extracted.documentNumber);
+        setCedulaExpiry(result.extracted.expiryDate);
+      } else {
+        setRifOcr(result);
+        setRifNumber(result.extracted.documentNumber);
+        setRifExpiry(result.extracted.expiryDate);
+        if (!fullName) setFullName(result.extracted.fullName);
+      }
+    } finally {
+      setProcessingKey(docType, false);
     }
-
-    setProcessingKey(docType, false);
   };
 
   const handleDocumentFile = (file?: File, docType?: DocType) => {
@@ -114,8 +117,10 @@ export default function OnboardingWizard() {
     const warnings: string[] = [];
     if (cedulaOcr?.expiryStatus === 'VENCIDO') warnings.push('Cedula vencida: advertencia amarilla, se permite continuar.');
     if (cedulaOcr?.expiryStatus === 'PROXIMO_A_VENCER') warnings.push('Cedula proxima a vencer.');
+    cedulaOcr?.warnings.forEach((warning) => warnings.push(`Cedula: ${warning}`));
     if (rifOcr?.expiryStatus === 'VENCIDO') warnings.push('RIF vencido: advertencia amarilla, se permite continuar.');
     if (rifOcr?.expiryStatus === 'PROXIMO_A_VENCER') warnings.push('RIF proximo a vencer.');
+    rifOcr?.warnings.forEach((warning) => warnings.push(`RIF: ${warning}`));
     return warnings;
   }, [cedulaOcr, rifOcr]);
 
@@ -179,24 +184,25 @@ export default function OnboardingWizard() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-content space-y-5 px-4 py-8 md:px-6">
+    <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-10 md:px-6">
       <header>
-        <h1 className="text-2xl font-bold text-white md:text-3xl">Onboarding Post UBPAY · Persona Natural</h1>
-        <p className="text-slate-300">Validacion automatica por carga. Las alertas son informativas y no bloquean el flujo.</p>
+        <h1 className="text-2xl font-bold text-white md:text-3xl">Onboarding POS UBIAPP · Persona Natural</h1>
+        <p className="text-blue-100">Validacion automatica por carga. Las alertas son informativas y no bloquean el flujo.</p>
       </header>
 
       <Stepper2Steps currentStep={step} />
+      <AlertBanner type="info">Sus documentos e imagenes se procesan en el navegador (modo demo).</AlertBanner>
 
       {step === 1 ? (
-        <section className="space-y-4 rounded-2xl border border-slate-700 bg-slate-900/60 p-5">
-          <h2 className="text-lg font-semibold text-white">Paso 1: Validacion de Documentos con OCR</h2>
+        <section className="space-y-4 rounded-xl border border-ubii-border bg-white p-6 shadow-soft">
+          <h2 className="text-lg font-semibold text-ubii-blue">Paso 1: Validacion de Documentos con OCR</h2>
 
           <div className="grid gap-3 md:grid-cols-2">
-            <label className="rounded-xl border border-primary bg-primary/15 p-3 text-sm font-semibold text-blue-100">
+            <label className="rounded-xl border border-ubii-blue bg-ubii-blue/10 p-3 text-sm font-semibold text-ubii-hover">
               <input type="radio" checked={applicantType === 'natural'} onChange={() => setApplicantType('natural')} className="mr-2" />
               Persona Natural
             </label>
-            <label className="rounded-xl border border-slate-700 bg-slate-800/50 p-3 text-sm font-semibold text-slate-400">
+            <label className="rounded-xl border border-ubii-border bg-ubii-light p-3 text-sm font-semibold text-gray-600">
               <input type="radio" disabled checked={false} onChange={() => undefined} className="mr-2" />
               Persona Juridica (deshabilitado en demo)
             </label>
@@ -221,13 +227,13 @@ export default function OnboardingWizard() {
             />
           </div>
 
-          <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4">
-            <p className="mb-3 text-sm font-semibold text-slate-100">Selfie del solicitante (opcional)</p>
+          <div className="rounded-xl border border-ubii-border bg-ubii-light p-4">
+            <p className="mb-3 text-sm font-semibold text-ubii-black">Selfie del solicitante (opcional)</p>
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={startSelfieCamera} className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white">
+              <PrimaryButton onClick={startSelfieCamera} className="px-3 py-2 text-sm">
                 Tomar selfie
-              </button>
-              <label className="rounded-lg bg-slate-700 px-3 py-2 text-sm text-white">
+              </PrimaryButton>
+              <label className="rounded-lg border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black">
                 Subir selfie
                 <input
                   type="file"
@@ -246,75 +252,75 @@ export default function OnboardingWizard() {
               <div className="mt-3 space-y-2">
                 <video ref={selfieVideoRef} className="h-52 w-full rounded-xl bg-black object-cover" autoPlay playsInline muted />
                 <div className="flex gap-2">
-                  <button type="button" onClick={captureSelfie} className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white">
+                  <PrimaryButton onClick={captureSelfie} className="px-3 py-2 text-sm">
                     Capturar selfie
-                  </button>
-                  <button type="button" onClick={stopSelfieCamera} className="rounded-lg bg-slate-700 px-3 py-2 text-sm text-white">
+                  </PrimaryButton>
+                  <PrimaryButton onClick={stopSelfieCamera} className="px-3 py-2 text-sm">
                     Cancelar
-                  </button>
+                  </PrimaryButton>
                 </div>
               </div>
             ) : null}
 
-            {selfieError ? <p className="mt-2 text-xs text-amber-200">{selfieError}</p> : null}
+            {selfieError ? <p className="mt-2 text-xs text-amber-700">{selfieError}</p> : null}
             {selfiePreview ? <img src={selfiePreview} alt="Selfie solicitante" className="mt-3 h-40 w-40 rounded-xl object-cover" /> : null}
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">
-            <label className="text-sm font-medium text-slate-100">
+            <label className="text-sm font-medium text-ubii-black">
               Nombre
               <input
                 value={fullName}
                 onChange={(event) => setFullName(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white"
+                className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
               />
             </label>
-            <label className="text-sm font-medium text-slate-100">
+            <label className="text-sm font-medium text-ubii-black">
               Cedula
               <input
                 value={cedulaNumber}
                 onChange={(event) => setCedulaNumber(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white"
+                className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
               />
             </label>
-            <label className="text-sm font-medium text-slate-100">
+            <label className="text-sm font-medium text-ubii-black">
               RIF
               <input
                 value={rifNumber}
                 onChange={(event) => setRifNumber(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white"
+                className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
               />
             </label>
-            <label className="text-sm font-medium text-slate-100">
+            <label className="text-sm font-medium text-ubii-black">
               Vencimiento cedula
               <input
                 value={cedulaExpiry}
                 onChange={(event) => setCedulaExpiry(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white"
+                className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
               />
             </label>
-            <label className="text-sm font-medium text-slate-100">
+            <label className="text-sm font-medium text-ubii-black">
               Vencimiento RIF
               <input
                 value={rifExpiry}
                 onChange={(event) => setRifExpiry(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white"
+                className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
               />
             </label>
-            <label className="text-sm font-medium text-slate-100">
+            <label className="text-sm font-medium text-ubii-black">
               Email
               <input
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white"
+                className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
               />
             </label>
-            <label className="text-sm font-medium text-slate-100 md:col-span-2">
+            <label className="text-sm font-medium text-ubii-black md:col-span-2">
               Telefono
               <input
                 value={phone}
                 onChange={(event) => setPhone(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white"
+                className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
               />
             </label>
           </div>
@@ -325,20 +331,15 @@ export default function OnboardingWizard() {
             </AlertBanner>
           ))}
 
-          <button
-            type="button"
-            onClick={() => setStep(2)}
-            disabled={!canContinueToStep2}
-            className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          <PrimaryButton onClick={() => setStep(2)} disabled={!canContinueToStep2}>
             Continuar al Paso 2
-          </button>
+          </PrimaryButton>
         </section>
       ) : null}
 
       {step === 2 ? (
-        <section className="space-y-4 rounded-2xl border border-slate-700 bg-slate-900/60 p-5">
-          <h2 className="text-lg font-semibold text-white">Paso 2: Carga de imagenes del comercio con IA</h2>
+        <section className="space-y-4 rounded-xl border border-ubii-border bg-white p-6 shadow-soft">
+          <h2 className="text-lg font-semibold text-ubii-blue">Paso 2: Carga de imagenes del comercio con IA</h2>
 
           <div className="grid gap-4 md:grid-cols-3">
             {images.map((item) => (
@@ -370,17 +371,12 @@ export default function OnboardingWizard() {
           ))}
 
           <div className="flex gap-2">
-            <button type="button" onClick={() => setStep(1)} className="rounded-xl bg-slate-700 px-5 py-2.5 text-sm font-semibold text-white">
+            <PrimaryButton onClick={() => setStep(1)}>
               Volver
-            </button>
-            <button
-              type="button"
-              onClick={submit}
-              disabled={!canFinish}
-              className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-            >
+            </PrimaryButton>
+            <PrimaryButton onClick={submit} disabled={!canFinish}>
               Enviar para revision
-            </button>
+            </PrimaryButton>
           </div>
         </section>
       ) : null}

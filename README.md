@@ -1,14 +1,18 @@
-# Onboarding Post UBPAY (Demo)
+# Onboarding POS UBIAPP (Demo)
 
-Demo frontend para onboarding POS con validacion asistida:
-- Paso 1: OCR de Cedula y RIF (autocompletado)
-- Paso 2: Analisis IA de imagenes del comercio + revision manual del analista
+Demo frontend para onboarding POS con recaudos y OCR real:
+- Modulo Persona Natural
+- Modulo Persona Juridica
+- OCR real en documentos (imagen/PDF, primera pagina)
+- Captura/subida de imagenes del comercio
 
 ## Stack
 
 - React + TypeScript + Vite
 - TailwindCSS
 - React Router
+- tesseract.js
+- pdfjs-dist
 
 ## Requisitos
 
@@ -34,16 +38,18 @@ npm run preview
 
 - `/` Landing
 - `/demo` Intro demo
-- `/onboarding` Wizard 2 pasos
+- `/onboarding` Recaudos
+- `/recaudos` Recaudos
 - `/done` Confirmacion y resumen
 
 ## Reglas de demo implementadas
 
-- Persona Natural activa
-- Persona Juridica visible pero deshabilitada
-- OCR y analisis de imagenes se disparan automaticamente al cargar
-- Alertas por vencimiento/probabilidades son amarillas y no bloquean el flujo
-- Flujo no se bloquea por warnings
+- Dos modulos: Persona Natural y Persona Juridica
+- OCR real al subir cada documento (PDF/JPG/PNG)
+- Extraccion conservadora: Nombres, Numero de identificacion, Fecha de vencimiento
+- Si no se detecta un campo: `NO DETECTADO`
+- Alerta amarilla de "Cedula vencida" solo informativa (no bloquea)
+- Solo faltantes obligatorios bloquean completitud del modulo
 
 ## AWS Amplify
 

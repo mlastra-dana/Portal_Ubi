@@ -10,9 +10,13 @@ export type OcrExtractedFields = {
 
 export type OcrResult = {
   docType: DocType;
+  detectedType: DocType | 'desconocido';
   extracted: OcrExtractedFields;
   confidence: number;
   expiryStatus: ExpiryStatus;
+  formatValid: boolean;
+  consistency: 'OK' | 'REVISAR';
+  warnings: string[];
 };
 
 export type ImageKind = 'fachada' | 'interior' | 'inventario';

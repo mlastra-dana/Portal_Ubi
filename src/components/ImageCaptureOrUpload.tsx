@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ImageKind } from '../types/onboarding';
+import { PrimaryButton } from './ui/PrimaryButton';
 
 type Props = {
   kind: ImageKind;
@@ -63,46 +64,44 @@ export function ImageCaptureOrUpload({ kind, label, onSelect }: Props) {
   };
 
   return (
-    <div className="space-y-3 rounded-2xl border border-slate-700 bg-slate-900/50 p-4">
+    <div className="space-y-3 rounded-xl border border-ubii-border bg-white p-6 shadow-soft">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-slate-100">{label}</p>
+        <p className="text-sm font-semibold text-ubii-black">{label}</p>
         <div className="flex gap-2">
-          <button
-            type="button"
+          <PrimaryButton
             onClick={() => setMode('capture')}
-            className={`rounded-lg px-3 py-1 text-xs ${mode === 'capture' ? 'bg-primary text-white' : 'bg-slate-800 text-slate-200'}`}
+            className="px-3 py-1 text-xs"
           >
             Tomar foto
-          </button>
-          <button
-            type="button"
+          </PrimaryButton>
+          <PrimaryButton
             onClick={() => {
               setMode('upload');
               stopCamera();
             }}
-            className={`rounded-lg px-3 py-1 text-xs ${mode === 'upload' ? 'bg-primary text-white' : 'bg-slate-800 text-slate-200'}`}
+            className="px-3 py-1 text-xs"
           >
             Subir archivo
-          </button>
+          </PrimaryButton>
         </div>
       </div>
 
       {mode === 'capture' ? (
         <div className="space-y-2">
           {!openCamera ? (
-            <button type="button" onClick={startCamera} className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white">
+            <PrimaryButton onClick={startCamera} className="px-3 py-2 text-sm">
               Abrir camara
-            </button>
+            </PrimaryButton>
           ) : (
             <div className="space-y-2">
               <video ref={videoRef} className="h-56 w-full rounded-xl bg-black object-cover" autoPlay playsInline muted />
               <div className="flex gap-2">
-                <button type="button" onClick={takePhoto} className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white">
+                <PrimaryButton onClick={takePhoto} className="px-3 py-2 text-sm">
                   Capturar {kind}
-                </button>
-                <button type="button" onClick={stopCamera} className="rounded-lg bg-slate-700 px-3 py-2 text-sm text-white">
+                </PrimaryButton>
+                <PrimaryButton onClick={stopCamera} className="px-3 py-2 text-sm">
                   Cancelar
-                </button>
+                </PrimaryButton>
               </div>
             </div>
           )}
@@ -116,11 +115,11 @@ export function ImageCaptureOrUpload({ kind, label, onSelect }: Props) {
             if (!file) return;
             onSelect({ blob: file, previewUrl: URL.createObjectURL(file) });
           }}
-          className="block w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-white"
+          className="block w-full rounded-lg border border-ubii-border bg-ubii-light px-3 py-2 text-sm text-ubii-black file:mr-3 file:rounded-md file:border-0 file:bg-ubii-blue file:px-3 file:py-1.5 file:text-white"
         />
       )}
 
-      {error ? <p className="text-xs text-amber-200">{error}</p> : null}
+      {error ? <p className="text-xs text-amber-700">{error}</p> : null}
     </div>
   );
 }
