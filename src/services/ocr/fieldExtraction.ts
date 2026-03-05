@@ -1,8 +1,9 @@
 const DATE_REGEX = /\b(\d{2}[/-]\d{2}[/-]\d{4}|\d{4}-\d{2}-\d{2})\b/g;
 
-const NAME_LABEL_REGEX = /(NOMBRES?|APELLIDOS?|NOMBRE\s*Y\s*APELLIDO[S]?|RAZON\s+SOCIAL)\s*[:\-]?\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]{4,})/i;
+const NAME_LABEL_REGEX = /(NOMBRES?|APELLIDOS?|NOMBRE\s*Y\s*APELLIDO[S]?|RAZON\s+SOCIAL)\s*[:\-]?\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ\s]{4,})/i;
 const NAME_FALLBACK_REGEX = /\b([A-ZÁÉÍÓÚÑ]{2,}(?:\s+[A-ZÁÉÍÓÚÑ]{2,}){1,4})\b/g;
 const ID_REGEX = /\b([VEJGP]-?\d{6,10}(?:-\d)?|\d{6,10})\b/i;
+const ID_LABELED_REGEX = /(C[ÉE]DULA|CED|CI|RIF|IDENTIFICACI[ÓO]N)\s*[:\-]?\s*([VEJGP]-?\d{6,10}(?:-\d)?)/i;
 
 const normalizeSpaces = (text: string): string => text.replace(/\s+/g, ' ').trim();
 
@@ -32,8 +33,22 @@ export function extractFields(rawText: string): { nombres: string | null; numero
     if (filtered.length === 1) nombres = filtered[0];
   }
 
-  const idMatch = ID_REGEX.exec(text);
-  const numeroId = idMatch ? idMatch[1].toUpperCase() : null;
+  if (!nombres) {
+    const lineCandidates = rawText
+      .split(/\r?\n/)
+      .map((line) => line.replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ\s]/g, ' ').replace(/\s+/g, ' ').trim())
+      .filter((line) => line.split(' ').length >= 2 && line.split(' ').length <= 5)
+      .filter((line) => !/(REPUBLICA|BOLIVARIANA|VENEZUELA|CEDULA|IDENTIDAD|RIF|REGISTRO|MERCANTIL|NACIONAL)/i.test(line));
+
+    if (lineCandidates.length > 0) {
+      const strongest = lineCandidates.sort((a, b) => b.length - a.length)[0];
+      if (strongest.length >= 8) nombres = strongest;
+    }
+  }
+
+  const labeledIdMatch = ID_LABELED_REGEX.exec(text);
+  const idMatch = labeledIdMatch?.[2] ? [null, labeledIdMatch[2]] : ID_REGEX.exec(text);
+  const numeroId = idMatch && idMatch[1] ? idMatch[1].toUpperCase().replace(/\s+/g, '') : null;
 
   const dateMatches = [...text.matchAll(DATE_REGEX)].map((m) => m[1]);
   const fechaCandidate = dateMatches.length > 0 ? dateMatches[dateMatches.length - 1] : null;

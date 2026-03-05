@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AlertBanner } from '../components/AlertBanner';
 import { CommerceImages } from '../components/CommerceImages';
@@ -11,25 +11,14 @@ type ModuleType = 'natural' | 'juridica';
 
 const isImagesComplete = (items: CommerceImageItem[]): boolean => items.length === 3 && items.every((item) => Boolean(item.file));
 const hasUploaded = (items: UploadedDocumentResult[]): boolean => items.length > 0;
-
-function OcrAutofillCard({ title, item }: { title: string; item?: UploadedDocumentResult }) {
-  return (
-    <section className="rounded-xl border border-ubii-border bg-white p-6 shadow-soft">
-      <h3 className="text-lg font-semibold text-ubii-blue">{title}</h3>
-      <div className="mt-3 space-y-2 text-sm text-ubii-black">
-        <p>
-          <span className="font-semibold">Nombres:</span> {item?.fields.nombres ?? 'NO DETECTADO'}
-        </p>
-        <p>
-          <span className="font-semibold">Numero de identificacion:</span> {item?.fields.numeroId ?? 'NO DETECTADO'}
-        </p>
-        <p>
-          <span className="font-semibold">Fecha de vencimiento:</span> {item?.fields.fechaVencimiento ?? 'NO DETECTADO'}
-        </p>
-      </div>
-    </section>
-  );
-}
+const splitFullName = (value: string): { nombres: string; apellidos: string } => {
+  const clean = value.trim().replace(/\s+/g, ' ');
+  if (!clean) return { nombres: '', apellidos: '' };
+  const parts = clean.split(' ');
+  if (parts.length === 1) return { nombres: parts[0], apellidos: '' };
+  if (parts.length === 2) return { nombres: parts[0], apellidos: parts[1] };
+  return { nombres: parts.slice(0, 2).join(' '), apellidos: parts.slice(2).join(' ') };
+};
 
 export default function Recaudos() {
   const [searchParams] = useSearchParams();
@@ -40,6 +29,11 @@ export default function Recaudos() {
   const [naturalImages, setNaturalImages] = useState<CommerceImageItem[]>([]);
   const [naturalSelfie, setNaturalSelfie] = useState<boolean>(false);
   const [naturalStep, setNaturalStep] = useState<1 | 2>(1);
+  const [naturalNombres, setNaturalNombres] = useState('');
+  const [naturalApellidos, setNaturalApellidos] = useState('');
+  const [naturalCedulaId, setNaturalCedulaId] = useState('');
+  const [naturalTelefono, setNaturalTelefono] = useState('');
+  const [naturalCorreo, setNaturalCorreo] = useState('');
 
   const [juridicaRepresentantes, setJuridicaRepresentantes] = useState<UploadedDocumentResult[]>([]);
   const [juridicaRif, setJuridicaRif] = useState<UploadedDocumentResult[]>([]);
@@ -47,16 +41,81 @@ export default function Recaudos() {
   const [juridicaImages, setJuridicaImages] = useState<CommerceImageItem[]>([]);
   const [juridicaSelfie, setJuridicaSelfie] = useState<boolean>(false);
   const [juridicaStep, setJuridicaStep] = useState<1 | 2>(1);
+  const [juridicaRazonSocial, setJuridicaRazonSocial] = useState('');
+  const [juridicaRifEmpresa, setJuridicaRifEmpresa] = useState('');
+  const [repNombres, setRepNombres] = useState('');
+  const [repApellidos, setRepApellidos] = useState('');
+  const [repCedula, setRepCedula] = useState('');
+  const [repTelefono, setRepTelefono] = useState('');
+  const [repCorreo, setRepCorreo] = useState('');
 
-  const naturalStep1Ready = useMemo(() => hasUploaded(naturalCedula) && hasUploaded(naturalRif) && naturalSelfie, [naturalCedula, naturalRif, naturalSelfie]);
+  useEffect(() => {
+    const cedula = naturalCedula[0];
+    if (!cedula) return;
+    const { nombres, apellidos } = splitFullName(cedula.fields.nombres ?? '');
+    if (nombres) setNaturalNombres(nombres);
+    if (apellidos) setNaturalApellidos(apellidos);
+    if (cedula.fields.numeroId) setNaturalCedulaId(cedula.fields.numeroId);
+  }, [naturalCedula]);
+
+  useEffect(() => {
+    const rif = naturalRif[0];
+    if (!rif) return;
+    if (!naturalNombres.trim() && rif.fields.nombres) {
+      const split = splitFullName(rif.fields.nombres);
+      if (split.nombres) setNaturalNombres(split.nombres);
+      if (split.apellidos) setNaturalApellidos(split.apellidos);
+    }
+  }, [naturalRif, naturalNombres]);
+
+  useEffect(() => {
+    const rif = juridicaRif[0];
+    if (!rif) return;
+    if (rif.fields.nombres) setJuridicaRazonSocial(rif.fields.nombres);
+    if (rif.fields.numeroId) setJuridicaRifEmpresa(rif.fields.numeroId);
+  }, [juridicaRif]);
+
+  useEffect(() => {
+    const rep = juridicaRepresentantes[0];
+    if (!rep) return;
+    const { nombres, apellidos } = splitFullName(rep.fields.nombres ?? '');
+    if (nombres) setRepNombres(nombres);
+    if (apellidos) setRepApellidos(apellidos);
+    if (rep.fields.numeroId) setRepCedula(rep.fields.numeroId);
+  }, [juridicaRepresentantes]);
+
+  const naturalDataReady = useMemo(
+    () => Boolean(naturalNombres.trim() && naturalApellidos.trim() && naturalCedulaId.trim() && naturalTelefono.trim() && naturalCorreo.trim()),
+    [naturalApellidos, naturalCedulaId, naturalCorreo, naturalNombres, naturalTelefono]
+  );
+
+  const naturalStep1Ready = useMemo(
+    () => hasUploaded(naturalCedula) && hasUploaded(naturalRif) && naturalSelfie && naturalDataReady,
+    [naturalCedula, naturalDataReady, naturalRif, naturalSelfie]
+  );
+
+  const juridicaDataReady = useMemo(
+    () =>
+      Boolean(
+        juridicaRazonSocial.trim() &&
+          juridicaRifEmpresa.trim() &&
+          repNombres.trim() &&
+          repApellidos.trim() &&
+          repCedula.trim() &&
+          repTelefono.trim() &&
+          repCorreo.trim()
+      ),
+    [juridicaRazonSocial, juridicaRifEmpresa, repApellidos, repCedula, repCorreo, repNombres, repTelefono]
+  );
 
   const juridicaStep1Ready = useMemo(
     () =>
       hasUploaded(juridicaRepresentantes) &&
       hasUploaded(juridicaRif) &&
       juridicaActaRegistro.some((item) => item.validationStatus === 'VALIDO') &&
-      juridicaSelfie,
-    [juridicaActaRegistro, juridicaRepresentantes, juridicaRif, juridicaSelfie]
+      juridicaSelfie &&
+      juridicaDataReady,
+    [juridicaActaRegistro, juridicaDataReady, juridicaRepresentantes, juridicaRif, juridicaSelfie]
   );
 
   return (
@@ -81,10 +140,52 @@ export default function Recaudos() {
               <DocumentSlot label="RIF" required docKind="RIF" onChange={setNaturalRif} />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <OcrAutofillCard title="Datos detectados · Cédula" item={naturalCedula[0]} />
-              <OcrAutofillCard title="Datos detectados · RIF" item={naturalRif[0]} />
-            </div>
+            <section className="rounded-xl border border-ubii-border bg-white p-6 shadow-soft">
+              <h3 className="text-lg font-semibold text-ubii-blue">Identificación</h3>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="text-sm font-medium text-ubii-black">
+                  Nombres
+                  <input
+                    value={naturalNombres}
+                    onChange={(event) => setNaturalNombres(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                  />
+                </label>
+                <label className="text-sm font-medium text-ubii-black">
+                  Apellidos
+                  <input
+                    value={naturalApellidos}
+                    onChange={(event) => setNaturalApellidos(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                  />
+                </label>
+                <label className="text-sm font-medium text-ubii-black">
+                  Cédula de identidad
+                  <input
+                    value={naturalCedulaId}
+                    onChange={(event) => setNaturalCedulaId(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                  />
+                </label>
+                <label className="text-sm font-medium text-ubii-black">
+                  Número de teléfono
+                  <input
+                    value={naturalTelefono}
+                    onChange={(event) => setNaturalTelefono(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                  />
+                </label>
+                <label className="text-sm font-medium text-ubii-black md:col-span-2">
+                  Correo
+                  <input
+                    type="email"
+                    value={naturalCorreo}
+                    onChange={(event) => setNaturalCorreo(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                  />
+                </label>
+              </div>
+            </section>
 
             <SelfieProof label="Prueba de vida (selfie)" onChange={(payload) => setNaturalSelfie(Boolean(payload?.file))} />
 
@@ -130,10 +231,74 @@ export default function Recaudos() {
               />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <OcrAutofillCard title="Datos detectados · Representante (1ro)" item={juridicaRepresentantes[0]} />
-              <OcrAutofillCard title="Datos detectados · RIF Comercio" item={juridicaRif[0]} />
-            </div>
+            <section className="rounded-xl border border-ubii-border bg-white p-6 shadow-soft">
+              <h3 className="text-lg font-semibold text-ubii-blue">Datos de la empresa</h3>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="text-sm font-medium text-ubii-black">
+                  Razón social
+                  <input
+                    value={juridicaRazonSocial}
+                    onChange={(event) => setJuridicaRazonSocial(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                  />
+                </label>
+                <label className="text-sm font-medium text-ubii-black">
+                  RIF de la empresa
+                  <input
+                    value={juridicaRifEmpresa}
+                    onChange={(event) => setJuridicaRifEmpresa(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                  />
+                </label>
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-ubii-border bg-white p-6 shadow-soft">
+              <h3 className="text-lg font-semibold text-ubii-blue">Datos del representante legal</h3>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="text-sm font-medium text-ubii-black">
+                  Nombres
+                  <input
+                    value={repNombres}
+                    onChange={(event) => setRepNombres(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                  />
+                </label>
+                <label className="text-sm font-medium text-ubii-black">
+                  Apellidos
+                  <input
+                    value={repApellidos}
+                    onChange={(event) => setRepApellidos(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                  />
+                </label>
+                <label className="text-sm font-medium text-ubii-black">
+                  Cédula de identidad
+                  <input
+                    value={repCedula}
+                    onChange={(event) => setRepCedula(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                  />
+                </label>
+                <label className="text-sm font-medium text-ubii-black">
+                  Número de teléfono
+                  <input
+                    value={repTelefono}
+                    onChange={(event) => setRepTelefono(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                  />
+                </label>
+                <label className="text-sm font-medium text-ubii-black md:col-span-2">
+                  Correo
+                  <input
+                    type="email"
+                    value={repCorreo}
+                    onChange={(event) => setRepCorreo(event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                  />
+                </label>
+              </div>
+            </section>
 
             <SelfieProof label="Prueba de vida (selfie del representante)" onChange={(payload) => setJuridicaSelfie(Boolean(payload?.file))} />
 
