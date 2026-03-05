@@ -10,8 +10,15 @@
   }
 
   body {
-    @apply bg-white text-textMain antialiased;
-    font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    @apply bg-white font-sans text-textMain antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply tracking-tight;
+    font-family: 'Poppins', 'Nunito Sans', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
   }
 }
 

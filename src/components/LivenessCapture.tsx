@@ -1,18 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from './Button';
-import type { CapturedMedia } from '../types/onboarding';
+import type { CapturedMedia, ValidationItemResult } from '../types/onboarding';
 import { formatBytes } from '../utils/format';
+import { ValidationResults } from './ValidationResults';
 
 type LivenessCaptureProps = {
   selfie?: CapturedMedia;
   shortVideo?: CapturedMedia;
   gestureDone: boolean;
   onChange: (payload: { selfie?: CapturedMedia; shortVideo?: CapturedMedia; gestureDone: boolean }) => void;
+  validationLoading?: boolean;
+  validationResult?: ValidationItemResult;
+  validationDetails?: { label: string; value: string }[];
 };
 
 const gestures = ['Mira al frente', 'Parpadea lentamente', 'Gira la cara a la derecha'];
 
-export function LivenessCapture({ selfie, shortVideo, gestureDone, onChange }: LivenessCaptureProps) {
+export function LivenessCapture({
+  selfie,
+  shortVideo,
+  gestureDone,
+  onChange,
+  validationLoading = false,
+  validationResult,
+  validationDetails
+}: LivenessCaptureProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -197,6 +209,14 @@ export function LivenessCapture({ selfie, shortVideo, gestureDone, onChange }: L
       <p className={`text-sm font-medium ${gestureDone ? 'text-emerald-700' : 'text-amber-700'}`}>
         Estado gesto: {gestureDone ? 'Completado' : 'Pendiente'}
       </p>
+
+      <ValidationResults
+        title="Resultado biometrico"
+        loading={validationLoading}
+        loadingText="Ejecutando validacion biometrica..."
+        result={validationResult}
+        details={validationDetails}
+      />
     </div>
   );
 }

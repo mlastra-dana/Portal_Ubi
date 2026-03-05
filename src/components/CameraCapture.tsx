@@ -1,16 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from './Button';
 import { formatBytes } from '../utils/format';
-import type { CapturedMedia } from '../types/onboarding';
+import type { CapturedMedia, ValidationItemResult } from '../types/onboarding';
+import { ValidationResults } from './ValidationResults';
 
 type CameraCaptureProps = {
   title: string;
   description: string;
   onCaptured: (media: CapturedMedia) => void;
   current?: CapturedMedia;
+  validationLoading?: boolean;
+  validationResult?: ValidationItemResult;
+  validationDetails?: { label: string; value: string }[];
 };
 
-export function CameraCapture({ title, description, onCaptured, current }: CameraCaptureProps) {
+export function CameraCapture({
+  title,
+  description,
+  onCaptured,
+  current,
+  validationLoading = false,
+  validationResult,
+  validationDetails
+}: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [error, setError] = useState<string>('');
@@ -122,6 +134,16 @@ export function CameraCapture({ title, description, onCaptured, current }: Camer
           <p className="text-xs text-primary">Captura en vivo obligatoria (sin galeria).</p>
         </div>
       ) : null}
+
+      <div className="mt-3">
+        <ValidationResults
+          title="Resultado IA"
+          loading={validationLoading}
+          loadingText="Analizando imagen..."
+          result={validationResult}
+          details={validationDetails}
+        />
+      </div>
     </div>
   );
 }

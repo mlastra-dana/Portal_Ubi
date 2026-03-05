@@ -1,0 +1,32 @@
+<svg width="520" height="760" viewBox="0 0 520 760" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="body" x1="90" y1="40" x2="430" y2="720" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#10B8E8"/>
+      <stop offset="1" stop-color="#129BD0"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="150" y1="210" x2="365" y2="510" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1A1D22"/>
+      <stop offset="1" stop-color="#0D0F12"/>
+    </linearGradient>
+  </defs>
+  <rect x="110" y="30" width="300" height="700" rx="38" fill="url(#body)"/>
+  <rect x="128" y="70" width="264" height="128" rx="16" fill="#1CC6EE" fill-opacity="0.55"/>
+  <rect x="144" y="215" width="232" height="330" rx="14" fill="url(#screen)"/>
+  <rect x="140" y="575" width="240" height="130" rx="18" fill="#0AA4D6" fill-opacity="0.65"/>
+  <g opacity="0.95">
+    <rect x="154" y="592" width="47" height="24" rx="7" fill="#EAF4FA"/>
+    <rect x="208" y="592" width="47" height="24" rx="7" fill="#EAF4FA"/>
+    <rect x="262" y="592" width="47" height="24" rx="7" fill="#EAF4FA"/>
+    <rect x="316" y="592" width="47" height="24" rx="7" fill="#EAF4FA"/>
+    <rect x="154" y="624" width="47" height="24" rx="7" fill="#EAF4FA"/>
+    <rect x="208" y="624" width="47" height="24" rx="7" fill="#EAF4FA"/>
+    <rect x="262" y="624" width="47" height="24" rx="7" fill="#EAF4FA"/>
+    <rect x="316" y="624" width="47" height="24" rx="7" fill="#F2B034"/>
+    <rect x="154" y="656" width="47" height="24" rx="7" fill="#EAF4FA"/>
+    <rect x="208" y="656" width="47" height="24" rx="7" fill="#EAF4FA"/>
+    <rect x="262" y="656" width="47" height="24" rx="7" fill="#EAF4FA"/>
+    <rect x="316" y="656" width="47" height="24" rx="7" fill="#39D39B"/>
+  </g>
+  <text x="176" y="138" fill="white" font-size="34" font-family="Arial, sans-serif" font-weight="700">Ubii</text>
+  <text x="256" y="139" fill="white" font-size="20" font-family="Arial, sans-serif" font-weight="600">pagos</text>
+</svg>
