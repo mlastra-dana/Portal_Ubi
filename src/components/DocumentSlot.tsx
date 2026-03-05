@@ -10,6 +10,7 @@ type Props = {
   required?: boolean;
   multiple?: boolean;
   docKind: DocKind;
+  description?: string;
   onChange?: (results: UploadedDocumentResult[]) => void;
 };
 
@@ -17,18 +18,14 @@ const ACCEPT = '.pdf,image/png,image/jpeg,image/jpg';
 
 const emptyFields = { nombres: null, numeroId: null, fechaVencimiento: null };
 
-const formatDate = (input: string | null): string => {
-  if (!input) return 'NO DETECTADO';
-  const parsed = parseDateStrict(input);
-  if (!parsed) return input;
-  const yyyy = parsed.getUTCFullYear();
-  const mm = String(parsed.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(parsed.getUTCDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-};
-
-const supportsExpiryWarning = (docKind: DocKind): boolean => docKind === 'CEDULA' || docKind === 'CEDULA_REPRESENTANTE';
+const supportsExpiryWarning = (docKind: DocKind): boolean => docKind === 'CEDULA' || docKind === 'CEDULA_REPRESENTANTE' || docKind === 'RIF';
 const requiresOcr = (docKind: DocKind): boolean => docKind === 'CEDULA' || docKind === 'CEDULA_REPRESENTANTE' || docKind === 'RIF';
+const isExpiringSoon = (date: Date, months = 6): boolean => {
+  const now = new Date();
+  const limit = new Date(now);
+  limit.setMonth(limit.getMonth() + months);
+  return date.getTime() >= now.getTime() && date.getTime() <= limit.getTime();
+};
 
 const validateActaRegistro = (file: File): { status: 'VALIDO' | 'REVISAR'; message: string } => {
   const lowerName = file.name.toLowerCase();
@@ -52,7 +49,7 @@ const validateActaRegistro = (file: File): { status: 'VALIDO' | 'REVISAR'; messa
   };
 };
 
-export function DocumentSlot({ label, required = false, multiple = false, docKind, onChange }: Props) {
+export function DocumentSlot({ label, required = false, multiple = false, docKind, description, onChange }: Props) {
   const [results, setResults] = useState<UploadedDocumentResult[]>([]);
   const inputId = useId();
 
@@ -136,10 +133,18 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
         </span>
       </div>
 
-      <div className="rounded-lg border border-ubii-border bg-ubii-light p-3">
-        <label htmlFor={inputId} className="inline-flex cursor-pointer items-center rounded-lg border border-ubii-blue bg-ubii-blue px-3 py-2 text-sm font-semibold text-white">
+      {description ? <p className="text-sm text-gray-600">{description}</p> : null}
+
+      <div className="rounded-xl border border-dashed border-ubii-border bg-ubii-light p-5">
+        <p className="text-center text-sm text-gray-600">Arrastra tu archivo o selecciónalo.</p>
+        <div className="mt-3 flex justify-center">
+          <label
+            htmlFor={inputId}
+            className="inline-flex cursor-pointer items-center rounded-lg border border-ubii-border bg-white px-4 py-2 text-sm font-semibold text-ubii-black"
+          >
           {multiple ? 'Seleccionar archivos' : 'Seleccionar archivo'}
-        </label>
+          </label>
+        </div>
         <input
           id={inputId}
           type="file"
@@ -151,13 +156,18 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
           }}
           className="sr-only"
         />
-        <p className="mt-2 text-xs text-gray-600">Formatos permitidos: PDF, JPG, PNG.</p>
+        <p className="mt-3 text-center text-xs text-gray-600">PDF, JPG, PNG. Máx. 10MB.</p>
       </div>
+
+      {results.length === 0 ? <p className="text-sm text-gray-600">Aún no hay validaciones ejecutadas.</p> : null}
 
       {results.map((result) => {
         const parsedExpiry = parseDateStrict(result.fields.fechaVencimiento ?? '');
-        const showExpiryWarning = supportsExpiryWarning(docKind) && parsedExpiry ? isExpired(parsedExpiry) : false;
+        const hasExpiry = supportsExpiryWarning(docKind) && Boolean(parsedExpiry);
+        const showExpiredWarning = hasExpiry && parsedExpiry ? isExpired(parsedExpiry) : false;
+        const showSoonWarning = hasExpiry && parsedExpiry ? !showExpiredWarning && isExpiringSoon(parsedExpiry, 6) : false;
         const showOcr = requiresOcr(docKind);
+        const docLabel = docKind === 'RIF' ? 'RIF' : 'Cédula';
 
         return (
           <article key={result.id} className="space-y-3 rounded-xl border border-ubii-border bg-ubii-light p-4">
@@ -176,20 +186,8 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
 
             {!result.processing && !result.error && showOcr ? (
               <div className="space-y-2 text-sm text-ubii-black">
-                <p>
-                  <span className="font-semibold">Nombres:</span> {result.fields.nombres ?? 'NO DETECTADO'}
-                </p>
-                <p>
-                  <span className="font-semibold">Numero de identificacion:</span> {result.fields.numeroId ?? 'NO DETECTADO'}
-                </p>
-                <p>
-                  <span className="font-semibold">Fecha de vencimiento:</span> {formatDate(result.fields.fechaVencimiento)}
-                </p>
-                <p>
-                  <span className="font-semibold">Confianza OCR:</span> {result.confidence ?? 0}%
-                </p>
-
-                {showExpiryWarning ? <AlertBanner type="warning">Cedula vencida</AlertBanner> : null}
+                {showExpiredWarning ? <AlertBanner type="warning">{docLabel} vencido</AlertBanner> : null}
+                {showSoonWarning ? <AlertBanner type="warning">{docLabel} próximo a vencerse</AlertBanner> : null}
                 {result.parseWarning ? <AlertBanner type="warning">{result.parseWarning}</AlertBanner> : null}
 
                 <details className="rounded-lg border border-ubii-border bg-white p-3">
