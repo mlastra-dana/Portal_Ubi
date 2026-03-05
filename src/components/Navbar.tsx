@@ -27,7 +27,7 @@ export function Navbar() {
           ))}
         </nav>
         <Link to="/demo">
-          <Button>Iniciar demo</Button>
+          <Button>Comenzar</Button>
         </Link>
       </div>
     </header>

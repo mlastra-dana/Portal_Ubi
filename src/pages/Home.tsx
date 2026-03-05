@@ -6,7 +6,7 @@ const bullets = ['Comienza a cobrar en minutos', 'Atencion 24/7 para comercios',
 const steps = [
   { title: 'Carga documentos', desc: 'Sube cedula, RIF y acta segun tipo de solicitante.' },
   { title: 'Captura en vivo', desc: 'Toma fotos del comercio y selfie de vida desde la camara.' },
-  { title: 'Valida y envia', desc: 'Ejecuta validacion IA demo y recibe tu numero de registro.' }
+  { title: 'Valida y envia', desc: 'Recibe el resultado de revision y tu numero de registro.' }
 ];
 
 export default function Home() {
@@ -27,12 +27,12 @@ export default function Home() {
               ))}
             </ul>
             <Link to="/demo">
-              <Button>Iniciar demo</Button>
+              <Button>Comenzar ahora</Button>
             </Link>
           </div>
           <Card className="bg-gradient-to-br from-primary to-primaryDark text-white">
-            <h2 className="text-2xl font-semibold">Validacion inteligente en una sola experiencia</h2>
-            <p className="mt-3 text-sm text-white/90">Arquitectura preparada para backend real con modo mock por defecto y despliegue listo para AWS Amplify.</p>
+            <h2 className="text-2xl font-semibold">Todo el onboarding en un solo flujo</h2>
+            <p className="mt-3 text-sm text-white/90">Un proceso guiado, rapido y claro para validar tu comercio sin friccion.</p>
           </Card>
         </div>
       </section>
@@ -51,7 +51,7 @@ export default function Home() {
           </div>
           <div className="mt-8">
             <Link to="/demo">
-              <Button>Comenzar flujo</Button>
+              <Button>Ver demo</Button>
             </Link>
           </div>
         </div>

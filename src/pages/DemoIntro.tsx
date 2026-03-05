@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
-import { apiClient } from '../services/apiClient';
 
 export default function DemoIntro() {
   return (
@@ -13,13 +12,11 @@ export default function DemoIntro() {
           <li>Documentos obligatorios segun tipo de solicitante.</li>
           <li>Fotos de fachada, interior e inventario capturadas en vivo.</li>
           <li>Prueba de vida con selfie en el momento y gesto guiado.</li>
-          <li>Validaciones IA simuladas con puntaje, labels y alertas.</li>
+          <li>Resultados claros por cada evidencia: Validado, Revisar o Rechazado.</li>
         </ul>
-        <p className="mb-6 rounded-lg bg-bgSoft p-3 text-sm text-gray-600">
-          Modo actual: <span className="font-semibold text-primary">{apiClient.useMock ? 'MOCK (sin backend)' : 'API real por VITE_API_BASE_URL'}</span>
-        </p>
+        <p className="mb-6 rounded-lg bg-bgSoft p-3 text-sm text-gray-600">La demo toma entre 2 y 4 minutos y puedes completarla desde movil o desktop.</p>
         <Link to="/onboarding">
-          <Button>Comenzar</Button>
+          <Button>Iniciar validacion</Button>
         </Link>
       </Card>
     </main>
