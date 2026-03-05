@@ -1,4 +1,4 @@
-export type DocKind = 'CEDULA' | 'RIF' | 'ACTA' | 'REGISTRO' | 'CEDULA_REPRESENTANTE';
+export type DocKind = 'CEDULA' | 'RIF' | 'ACTA' | 'REGISTRO' | 'ACTA_REGISTRO' | 'CEDULA_REPRESENTANTE';
 
 export type OcrExtractedFields = {
   nombres: string | null;
@@ -14,6 +14,8 @@ export type UploadedDocumentResult = {
   rawText: string;
   confidence: number | null;
   fields: OcrExtractedFields;
+  validationStatus?: 'VALIDO' | 'REVISAR';
+  validationMessage?: string;
   parseWarning?: string;
   error?: string;
 };

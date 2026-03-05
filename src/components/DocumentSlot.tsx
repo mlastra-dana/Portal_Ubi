@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { ocrFile } from '../services/ocr/ocrEngine';
 import { extractFields } from '../services/ocr/fieldExtraction';
 import type { DocKind, UploadedDocumentResult } from '../types/recaudos';
@@ -28,9 +28,33 @@ const formatDate = (input: string | null): string => {
 };
 
 const supportsExpiryWarning = (docKind: DocKind): boolean => docKind === 'CEDULA' || docKind === 'CEDULA_REPRESENTANTE';
+const requiresOcr = (docKind: DocKind): boolean => docKind === 'CEDULA' || docKind === 'CEDULA_REPRESENTANTE' || docKind === 'RIF';
+
+const validateActaRegistro = (file: File): { status: 'VALIDO' | 'REVISAR'; message: string } => {
+  const lowerName = file.name.toLowerCase();
+  const looksLikeActaRegistro =
+    lowerName.includes('acta') ||
+    lowerName.includes('constitutiva') ||
+    lowerName.includes('registro mercantil') ||
+    lowerName.includes('mercantil') ||
+    lowerName.includes('registro');
+
+  if (looksLikeActaRegistro) {
+    return {
+      status: 'VALIDO',
+      message: 'Documento válido como Acta constitutiva / Registro mercantil.'
+    };
+  }
+
+  return {
+    status: 'REVISAR',
+    message: 'No se pudo validar el tipo de documento como Acta constitutiva / Registro mercantil.'
+  };
+};
 
 export function DocumentSlot({ label, required = false, multiple = false, docKind, onChange }: Props) {
   const [results, setResults] = useState<UploadedDocumentResult[]>([]);
+  const inputId = useId();
 
   const processFile = async (file: File) => {
     const id = `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(16).slice(2)}`;
@@ -59,22 +83,37 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
     };
 
     try {
-      const { rawText, confidence } = await ocrFile(file, (progress) => setItem({ progress }));
-      const fields = extractFields(rawText);
+      if (requiresOcr(docKind)) {
+        const { rawText, confidence } = await ocrFile(file, (progress) => setItem({ progress }));
+        const fields = extractFields(rawText);
 
-      let parseWarning: string | undefined;
-      if (fields.fechaVencimiento && !parseDateStrict(fields.fechaVencimiento)) {
-        parseWarning = 'Se detecto una fecha, pero no pudo parsearse de forma estricta.';
+        let parseWarning: string | undefined;
+        if (fields.fechaVencimiento && !parseDateStrict(fields.fechaVencimiento)) {
+          parseWarning = 'Se detecto una fecha, pero no pudo parsearse de forma estricta.';
+        }
+
+        setItem({
+          processing: false,
+          progress: 100,
+          rawText: rawText.trim(),
+          confidence: Math.round(confidence),
+          fields,
+          parseWarning,
+          validationStatus: 'VALIDO',
+          validationMessage: 'Documento procesado correctamente.'
+        });
+      } else {
+        const validation = validateActaRegistro(file);
+        setItem({
+          processing: false,
+          progress: 100,
+          rawText: '',
+          confidence: null,
+          fields: emptyFields,
+          validationStatus: validation.status,
+          validationMessage: validation.message
+        });
       }
-
-      setItem({
-        processing: false,
-        progress: 100,
-        rawText: rawText.trim(),
-        confidence: Math.round(confidence),
-        fields,
-        parseWarning
-      });
     } catch (error) {
       setItem({
         processing: false,
@@ -97,20 +136,28 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
         </span>
       </div>
 
-      <input
-        type="file"
-        accept={ACCEPT}
-        multiple={multiple}
-        onChange={(event) => {
-          const files = Array.from(event.target.files ?? []);
-          files.forEach((file) => void processFile(file));
-        }}
-        className="block w-full rounded-lg border border-ubii-border bg-ubii-light px-3 py-2 text-sm text-ubii-black file:mr-3 file:rounded-md file:border-0 file:bg-ubii-blue file:px-3 file:py-1.5 file:text-white"
-      />
+      <div className="rounded-lg border border-ubii-border bg-ubii-light p-3">
+        <label htmlFor={inputId} className="inline-flex cursor-pointer items-center rounded-lg border border-ubii-blue bg-ubii-blue px-3 py-2 text-sm font-semibold text-white">
+          {multiple ? 'Seleccionar archivos' : 'Seleccionar archivo'}
+        </label>
+        <input
+          id={inputId}
+          type="file"
+          accept={ACCEPT}
+          multiple={multiple}
+          onChange={(event) => {
+            const files = Array.from(event.target.files ?? []);
+            files.forEach((file) => void processFile(file));
+          }}
+          className="sr-only"
+        />
+        <p className="mt-2 text-xs text-gray-600">Formatos permitidos: PDF, JPG, PNG.</p>
+      </div>
 
       {results.map((result) => {
         const parsedExpiry = parseDateStrict(result.fields.fechaVencimiento ?? '');
         const showExpiryWarning = supportsExpiryWarning(docKind) && parsedExpiry ? isExpired(parsedExpiry) : false;
+        const showOcr = requiresOcr(docKind);
 
         return (
           <article key={result.id} className="space-y-3 rounded-xl border border-ubii-border bg-ubii-light p-4">
@@ -118,7 +165,7 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
 
             {result.processing ? (
               <div className="space-y-2">
-                <p className="text-sm text-ubii-black">Procesando OCR...</p>
+                <p className="text-sm text-ubii-black">{showOcr ? 'Procesando OCR...' : 'Validando documento...'}</p>
                 <div className="h-2 w-full overflow-hidden rounded-full bg-white">
                   <div className="h-full bg-ubii-blue" style={{ width: `${result.progress}%` }} />
                 </div>
@@ -127,7 +174,7 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
 
             {result.error ? <AlertBanner type="error">{result.error}</AlertBanner> : null}
 
-            {!result.processing && !result.error ? (
+            {!result.processing && !result.error && showOcr ? (
               <div className="space-y-2 text-sm text-ubii-black">
                 <p>
                   <span className="font-semibold">Nombres:</span> {result.fields.nombres ?? 'NO DETECTADO'}
@@ -149,6 +196,14 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
                   <summary className="cursor-pointer text-sm font-semibold text-ubii-blue">Ver texto OCR</summary>
                   <pre className="mt-2 whitespace-pre-wrap text-xs text-gray-700">{result.rawText || 'Sin texto detectado.'}</pre>
                 </details>
+              </div>
+            ) : null}
+
+            {!result.processing && !result.error && !showOcr ? (
+              <div className="space-y-2 text-sm text-ubii-black">
+                {result.validationStatus === 'VALIDO' ? <AlertBanner type="success">{result.validationMessage}</AlertBanner> : null}
+                {result.validationStatus === 'REVISAR' ? <AlertBanner type="warning">{result.validationMessage}</AlertBanner> : null}
+                <p className="text-xs text-gray-700">Este documento no usa OCR en la demo.</p>
               </div>
             ) : null}
           </article>

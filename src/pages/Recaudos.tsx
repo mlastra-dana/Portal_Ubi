@@ -43,8 +43,7 @@ export default function Recaudos() {
 
   const [juridicaRepresentantes, setJuridicaRepresentantes] = useState<UploadedDocumentResult[]>([]);
   const [juridicaRif, setJuridicaRif] = useState<UploadedDocumentResult[]>([]);
-  const [juridicaActa, setJuridicaActa] = useState<UploadedDocumentResult[]>([]);
-  const [juridicaRegistro, setJuridicaRegistro] = useState<UploadedDocumentResult[]>([]);
+  const [juridicaActaRegistro, setJuridicaActaRegistro] = useState<UploadedDocumentResult[]>([]);
   const [juridicaImages, setJuridicaImages] = useState<CommerceImageItem[]>([]);
   const [juridicaSelfie, setJuridicaSelfie] = useState<boolean>(false);
   const [juridicaStep, setJuridicaStep] = useState<1 | 2>(1);
@@ -55,10 +54,9 @@ export default function Recaudos() {
     () =>
       hasUploaded(juridicaRepresentantes) &&
       hasUploaded(juridicaRif) &&
-      hasUploaded(juridicaActa) &&
-      hasUploaded(juridicaRegistro) &&
+      juridicaActaRegistro.some((item) => item.validationStatus === 'VALIDO') &&
       juridicaSelfie,
-    [juridicaActa, juridicaRegistro, juridicaRepresentantes, juridicaRif, juridicaSelfie]
+    [juridicaActaRegistro, juridicaRepresentantes, juridicaRif, juridicaSelfie]
   );
 
   return (
@@ -107,7 +105,7 @@ export default function Recaudos() {
 
       {moduleType === 'juridica' ? (
         <section className="space-y-4">
-          <AlertBanner type="info">Persona Jurídica: representantes, RIF, acta, registro y fotos del comercio.</AlertBanner>
+          <AlertBanner type="info">Persona Jurídica: representantes, RIF, acta/registro y fotos del comercio.</AlertBanner>
 
           <section className="rounded-xl border border-ubii-border bg-white p-4 shadow-soft">
             <p className="text-sm font-semibold text-ubii-black">Paso {juridicaStep} de 2</p>
@@ -124,8 +122,12 @@ export default function Recaudos() {
                 onChange={setJuridicaRepresentantes}
               />
               <DocumentSlot label="RIF del Comercio" required docKind="RIF" onChange={setJuridicaRif} />
-              <DocumentSlot label="Acta Constitutiva" required docKind="ACTA" onChange={setJuridicaActa} />
-              <DocumentSlot label="Registro Mercantil" required docKind="REGISTRO" onChange={setJuridicaRegistro} />
+              <DocumentSlot
+                label="Acta constitutiva o Registro mercantil"
+                required
+                docKind="ACTA_REGISTRO"
+                onChange={setJuridicaActaRegistro}
+              />
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">

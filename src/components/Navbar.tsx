@@ -31,7 +31,7 @@ export function Navbar() {
           </PrimaryButton>
         ) : (
           <PrimaryButton className="px-3 py-2 md:hidden" onClick={() => setMenuOpen((prev) => !prev)} aria-label="Abrir menu">
-            Menu
+            Menú
           </PrimaryButton>
         )}
       </div>
