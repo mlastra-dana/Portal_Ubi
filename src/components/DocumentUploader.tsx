@@ -1,39 +1,32 @@
-import { FileDropzone } from './FileDropzone';
-import { ValidationResults } from './ValidationResults';
-import { formatBytes } from '../utils/format';
-import type { DocumentEntry } from '../types/onboarding';
+import type { DocType, OcrResult } from '../types/onboarding';
+import { OcrResultCard } from './OcrResultCard';
 
 export function DocumentUploader({
-  document,
-  loading,
-  onFile,
-  details
+  label,
+  docType,
+  file,
+  processing,
+  result,
+  onFile
 }: {
-  document: DocumentEntry;
-  loading: boolean;
-  onFile: (file?: File) => void;
-  details?: { label: string; value: string }[];
+  label: string;
+  docType: DocType;
+  file?: File;
+  processing: boolean;
+  result?: OcrResult;
+  onFile: (file?: File, docType?: DocType) => void;
 }) {
-  const isImage = Boolean(document.file && document.file.type.startsWith('image/'));
-
   return (
-    <div className="space-y-2 rounded-xl border border-borderSoft p-3">
-      <FileDropzone
-        id={`file-${document.type}`}
+    <div className="space-y-3 rounded-2xl border border-slate-700 bg-slate-900/50 p-4 shadow-soft">
+      <label className="block text-sm font-semibold text-slate-100">{label}</label>
+      <input
+        type="file"
         accept=".pdf,image/png,image/jpeg"
-        onFile={onFile}
-        label={`${document.label}${document.required ? ' *' : ''}`}
-        hint="Permitido: PDF, PNG, JPG"
+        onChange={(event) => onFile(event.target.files?.[0], docType)}
+        className="block w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-white"
       />
-      {document.file ? (
-        <div className="rounded-lg border border-borderSoft bg-bgSoft p-2 text-xs text-gray-600">
-          <p>
-            {document.file.name} · {formatBytes(document.file.size)}
-          </p>
-          {isImage ? <img src={document.previewUrl} alt={document.label} className="mt-2 h-24 w-full rounded-md object-cover" /> : null}
-        </div>
-      ) : null}
-      <ValidationResults title="Resultado IA" loading={loading} loadingText="Analizando documento..." result={document.result} details={details} />
+      {file ? <p className="text-xs text-slate-300">{file.name}</p> : null}
+      <OcrResultCard processing={processing} result={result} />
     </div>
   );
 }

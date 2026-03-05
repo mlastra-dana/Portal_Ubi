@@ -1,59 +1,57 @@
-# Portalito Ubii - Onboarding y Validacion Inteligente
+# Onboarding Post UBPAY (Demo)
 
-Aplicacion web demo construida con React + TypeScript + Vite + TailwindCSS para onboarding comercial con validaciones IA simuladas.
+Demo frontend para onboarding POS con validacion asistida:
+- Paso 1: OCR de Cedula y RIF (autocompletado)
+- Paso 2: Analisis IA de imagenes del comercio + revision manual del analista
 
 ## Stack
 
-- React 18
-- TypeScript
-- Vite
+- React + TypeScript + Vite
 - TailwindCSS
-- React Router DOM
+- React Router
 
 ## Requisitos
 
 - Node.js 18+
 - npm 9+
 
-## Ejecutar localmente
+## Ejecutar local
 
 ```bash
 npm ci
 npm run dev
 ```
 
-Build de produccion:
+## Build produccion
 
 ```bash
+npm ci
 npm run build
 npm run preview
 ```
 
-## Variables de entorno
+## Rutas
 
-- `VITE_API_BASE_URL` (opcional)
-  - Si se define, el frontend intenta consumir:
-    - `POST /validate/document`
-    - `POST /validate/photo`
-    - `POST /validate/liveness`
-  - Si no existe (o falla), usa modo MOCK automaticamente.
+- `/` Landing
+- `/demo` Intro demo
+- `/onboarding` Wizard 2 pasos
+- `/done` Confirmacion y resumen
 
-## Flujo
+## Reglas de demo implementadas
 
-- `/` Landing corporativa
-- `/demo` Introduccion a demo
-- `/onboarding` Wizard 5 pasos
-- `/done` Confirmacion final
+- Persona Natural activa
+- Persona Juridica visible pero deshabilitada
+- OCR y analisis de imagenes se disparan automaticamente al cargar
+- Alertas por vencimiento/probabilidades son amarillas y no bloquean el flujo
+- Flujo no se bloquea por warnings
 
-## AWS Amplify (Vite)
-
-Config recomendada:
+## AWS Amplify
 
 - Build command: `npm ci && npm run build`
-- Output directory: `dist`
-- Node runtime: `18+`
+- Artifacts/output: `dist`
+- Node recomendado: `18+`
 
-Ejemplo de `amplify.yml`:
+Ejemplo `amplify.yml`:
 
 ```yaml
 version: 1
@@ -73,9 +71,3 @@ frontend:
     paths:
       - node_modules/**/*
 ```
-
-## Notas de demo
-
-- Documentos permiten `input[type=file]` (PDF/JPG/PNG).
-- Fotos de comercio y liveness requieren captura en vivo con `getUserMedia` + `canvas`.
-- Validacion IA retorna: `{ ok, score, labels, extractedFields, warnings }`.

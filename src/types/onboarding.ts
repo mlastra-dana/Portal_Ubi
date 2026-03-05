@@ -1,71 +1,46 @@
 export type ApplicantType = 'natural' | 'juridica';
-export type ValidationBadge = 'validado' | 'revisar' | 'rechazado' | 'pendiente';
+export type DocType = 'cedula' | 'rif';
+export type ExpiryStatus = 'OK' | 'VENCIDO' | 'PROXIMO_A_VENCER';
 
-export type ValidationResponse = {
-  ok: boolean;
-  score: number;
-  labels: string[];
-  extractedFields: Record<string, string>;
+export type OcrExtractedFields = {
+  fullName: string;
+  documentNumber: string;
+  expiryDate: string;
+};
+
+export type OcrResult = {
+  docType: DocType;
+  extracted: OcrExtractedFields;
+  confidence: number;
+  expiryStatus: ExpiryStatus;
+};
+
+export type ImageKind = 'fachada' | 'interior' | 'inventario';
+
+export type ImageAnalysis = {
+  kind: ImageKind;
+  description: string;
+  expectedTypeProbability: number;
+  aiGeneratedProbability: number;
   warnings: string[];
 };
 
-export type ValidationItemResult = {
-  status: ValidationBadge;
-  score: number;
-  warnings: string[];
-  labels?: string[];
-  extractedFields?: Record<string, string>;
-};
+export type ManualReviewDecision = 'approved' | 'rejected' | null;
 
-export type DocumentType = 'cedula' | 'rif' | 'acta';
-export type PhotoKind = 'fachada' | 'interior' | 'inventario';
-
-export type DocumentEntry = {
-  type: DocumentType;
+export type ImageItemState = {
+  kind: ImageKind;
   label: string;
-  required: boolean;
-  file?: File;
+  blob?: Blob;
   previewUrl?: string;
-  result?: ValidationItemResult;
+  analysis?: ImageAnalysis;
+  decision: ManualReviewDecision;
 };
 
-export type CapturedMedia = {
-  blob: Blob;
-  previewUrl: string;
-  mimeType: string;
-  size: number;
-  capturedAt: string;
-};
-
-export type PhotoEntry = {
-  kind: PhotoKind;
-  label: string;
-  required: boolean;
-  capture?: CapturedMedia;
-  result?: ValidationItemResult;
-};
-
-export type LivenessEntry = {
-  selfie?: CapturedMedia;
-  shortVideo?: CapturedMedia;
-  gestureDone: boolean;
-  result?: ValidationItemResult;
-};
-
-export type ApplicantInfo = {
-  type: ApplicantType;
-  businessName: string;
-  idOrRif: string;
-  phone: string;
-  email: string;
-};
-
-export type WizardState = {
-  currentStep: number;
-  applicant: ApplicantInfo;
-  documents: DocumentEntry[];
-  photos: PhotoEntry[];
-  liveness: LivenessEntry;
-  finalRegistrationNumber?: string;
-  submittedAt?: string;
+export type OnboardingSummary = {
+  ocr: {
+    cedula?: OcrResult;
+    rif?: OcrResult;
+  };
+  imageAnalysis: ImageAnalysis[];
+  warnings: string[];
 };

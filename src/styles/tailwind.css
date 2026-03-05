@@ -10,7 +10,7 @@
   }
 
   body {
-    @apply bg-white font-sans text-textMain antialiased;
+    @apply bg-slate-950 font-sans text-slate-100 antialiased;
   }
 
   h1,
@@ -19,11 +19,5 @@
   h4 {
     @apply tracking-tight;
     font-family: 'Poppins', 'Nunito Sans', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
-  }
-}
-
-@layer components {
-  .container-app {
-    @apply mx-auto w-full max-w-content px-4 md:px-6;
   }
 }
