@@ -30,16 +30,16 @@ export default function Done() {
     <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-10 md:px-6">
       <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-soft">
         <h1 className="text-2xl font-bold text-ubii-blue md:text-3xl">Solicitud enviada para revision</h1>
-        <p className="mt-2 text-gray-600">Resumen consolidado de OCR y analisis de imagenes.</p>
+        <p className="mt-2 text-gray-600">Resumen de documentos y fotos cargadas.</p>
       </section>
 
       <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-soft">
-        <h2 className="text-lg font-semibold text-ubii-blue">OCR confidence</h2>
+        <h2 className="text-lg font-semibold text-ubii-blue">Resultado de documentos</h2>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           {ocrItems.map((item) => (
             <div key={item?.docType} className="rounded-xl border border-gray-200 bg-ubii-light p-3 text-sm text-ubii-black">
               <p className="font-semibold uppercase">{item?.docType}</p>
-              <p>Confianza: {item?.confidence}%</p>
+              <p>Nivel de lectura: {item?.confidence}%</p>
               <p>Vigencia: {item?.expiryStatus}</p>
             </div>
           ))}

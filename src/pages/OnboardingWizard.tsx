@@ -186,7 +186,7 @@ export default function OnboardingWizard() {
   return (
     <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-10 md:px-6">
       <header>
-        <h1 className="text-2xl font-bold text-white md:text-3xl">Onboarding POS UBIAPP · Persona Natural</h1>
+        <h1 className="text-2xl font-bold text-white md:text-3xl">Onboarding POS UbiiApp · Persona Natural</h1>
         <p className="text-blue-100">Validacion automatica por carga. Las alertas son informativas y no bloquean el flujo.</p>
       </header>
 

@@ -1,4 +1,4 @@
-# Onboarding POS UBIAPP (Demo)
+# Onboarding POS UbiiApp (Demo)
 
 Demo frontend para onboarding POS con recaudos y OCR real:
 - Modulo Persona Natural
@@ -49,7 +49,7 @@ npm run preview
 - Extraccion conservadora: Nombres, Numero de identificacion, Fecha de vencimiento
 - Si no se detecta un campo: `NO DETECTADO`
 - Alerta amarilla de "Cedula vencida" solo informativa (no bloquea)
-- Solo faltantes obligatorios bloquean completitud del modulo
+- Solo faltantes obligatorios bloquean el estado del modulo
 
 ## AWS Amplify
 

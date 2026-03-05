@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AlertBanner } from '../components/AlertBanner';
 import { CommerceImages } from '../components/CommerceImages';
 import { DocumentSlot } from '../components/DocumentSlot';
+import { SelfieProof } from '../components/SelfieProof';
+import { PrimaryButton } from '../components/ui/PrimaryButton';
 import type { CommerceImageItem, UploadedDocumentResult } from '../types/recaudos';
 
 type ModuleType = 'natural' | 'juridica';
@@ -29,120 +32,121 @@ function OcrAutofillCard({ title, item }: { title: string; item?: UploadedDocume
 }
 
 export default function Recaudos() {
-  const [moduleType, setModuleType] = useState<ModuleType>('natural');
+  const [searchParams] = useSearchParams();
+  const moduleType: ModuleType = searchParams.get('tipo') === 'juridica' ? 'juridica' : 'natural';
 
   const [naturalCedula, setNaturalCedula] = useState<UploadedDocumentResult[]>([]);
   const [naturalRif, setNaturalRif] = useState<UploadedDocumentResult[]>([]);
   const [naturalImages, setNaturalImages] = useState<CommerceImageItem[]>([]);
+  const [naturalSelfie, setNaturalSelfie] = useState<boolean>(false);
+  const [naturalStep, setNaturalStep] = useState<1 | 2>(1);
 
   const [juridicaRepresentantes, setJuridicaRepresentantes] = useState<UploadedDocumentResult[]>([]);
   const [juridicaRif, setJuridicaRif] = useState<UploadedDocumentResult[]>([]);
   const [juridicaActa, setJuridicaActa] = useState<UploadedDocumentResult[]>([]);
   const [juridicaRegistro, setJuridicaRegistro] = useState<UploadedDocumentResult[]>([]);
   const [juridicaImages, setJuridicaImages] = useState<CommerceImageItem[]>([]);
+  const [juridicaSelfie, setJuridicaSelfie] = useState<boolean>(false);
+  const [juridicaStep, setJuridicaStep] = useState<1 | 2>(1);
 
-  const naturalComplete = useMemo(
-    () => hasUploaded(naturalCedula) && hasUploaded(naturalRif) && isImagesComplete(naturalImages),
-    [naturalCedula, naturalImages, naturalRif]
-  );
+  const naturalStep1Ready = useMemo(() => hasUploaded(naturalCedula) && hasUploaded(naturalRif) && naturalSelfie, [naturalCedula, naturalRif, naturalSelfie]);
 
-  const juridicaComplete = useMemo(
+  const juridicaStep1Ready = useMemo(
     () =>
       hasUploaded(juridicaRepresentantes) &&
       hasUploaded(juridicaRif) &&
       hasUploaded(juridicaActa) &&
       hasUploaded(juridicaRegistro) &&
-      isImagesComplete(juridicaImages),
-    [juridicaActa, juridicaImages, juridicaRegistro, juridicaRepresentantes, juridicaRif]
+      juridicaSelfie,
+    [juridicaActa, juridicaRegistro, juridicaRepresentantes, juridicaRif, juridicaSelfie]
   );
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-10 md:px-6">
       <header className="space-y-2">
         <h1 className="text-3xl font-bold text-white">Onboarding Recaudos</h1>
-        <p className="text-blue-100">Carga documentos e imagenes. El OCR se ejecuta automaticamente en cada archivo.</p>
+        <p className="text-blue-100">Carga tus documentos y fotos para continuar.</p>
       </header>
-
-      <section className="rounded-xl border border-ubii-border bg-white p-4 shadow-soft">
-        <div className="grid gap-2 md:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => setModuleType('natural')}
-            className={`w-full rounded-lg border px-4 py-2 text-sm font-semibold ${
-              moduleType === 'natural' ? 'border-ubii-blue bg-ubii-blue text-white' : 'border-ubii-border bg-white text-ubii-black'
-            }`}
-          >
-            Persona Natural
-          </button>
-          <button
-            type="button"
-            onClick={() => setModuleType('juridica')}
-            className={`w-full rounded-lg border px-4 py-2 text-sm font-semibold ${
-              moduleType === 'juridica' ? 'border-ubii-blue bg-ubii-blue text-white' : 'border-ubii-border bg-white text-ubii-black'
-            }`}
-          >
-            Persona Juridica
-          </button>
-        </div>
-      </section>
 
       {moduleType === 'natural' ? (
         <section className="space-y-4">
-          <AlertBanner type="info">Modulo Persona Natural: requeridos Cedula, RIF y tres imagenes del comercio.</AlertBanner>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <DocumentSlot label="Cedula de Identidad" required docKind="CEDULA" onChange={setNaturalCedula} />
-            <DocumentSlot label="RIF" required docKind="RIF" onChange={setNaturalRif} />
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <OcrAutofillCard title="Autocompletado OCR · Cedula" item={naturalCedula[0]} />
-            <OcrAutofillCard title="Autocompletado OCR · RIF" item={naturalRif[0]} />
-          </div>
-
-          <CommerceImages onChange={setNaturalImages} />
+          <AlertBanner type="info">Persona Natural: cédula, RIF y tres fotos del comercio.</AlertBanner>
 
           <section className="rounded-xl border border-ubii-border bg-white p-4 shadow-soft">
-            <p className="text-sm font-semibold text-ubii-black">Completitud del modulo:</p>
-            <p className={`mt-2 text-lg font-bold ${naturalComplete ? 'text-emerald-700' : 'text-amber-700'}`}>
-              {naturalComplete ? 'COMPLETO' : 'PENDIENTE'}
-            </p>
-            <p className="text-xs text-gray-600">Las advertencias (ej. cedula vencida) no bloquean el proceso.</p>
+            <p className="text-sm font-semibold text-ubii-black">Paso {naturalStep} de 2</p>
+            <p className="text-xs text-gray-600">{naturalStep === 1 ? 'Identificación' : 'Imágenes del comercio'}</p>
           </section>
+
+          <div className={naturalStep === 1 ? 'space-y-4' : 'hidden'}>
+            <div className="grid gap-4 md:grid-cols-2">
+              <DocumentSlot label="Cedula de Identidad" required docKind="CEDULA" onChange={setNaturalCedula} />
+              <DocumentSlot label="RIF" required docKind="RIF" onChange={setNaturalRif} />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <OcrAutofillCard title="Datos detectados · Cédula" item={naturalCedula[0]} />
+              <OcrAutofillCard title="Datos detectados · RIF" item={naturalRif[0]} />
+            </div>
+
+            <SelfieProof label="Prueba de vida (selfie)" onChange={(payload) => setNaturalSelfie(Boolean(payload?.file))} />
+
+            <PrimaryButton onClick={() => setNaturalStep(2)} disabled={!naturalStep1Ready}>
+              Continuar al Paso 2
+            </PrimaryButton>
+          </div>
+
+          <div className={naturalStep === 2 ? 'space-y-4' : 'hidden'}>
+            <CommerceImages onChange={setNaturalImages} />
+            <div className="flex gap-2">
+              <PrimaryButton onClick={() => setNaturalStep(1)}>Volver al Paso 1</PrimaryButton>
+              <PrimaryButton disabled={!isImagesComplete(naturalImages)}>Finalizar módulo</PrimaryButton>
+            </div>
+          </div>
         </section>
       ) : null}
 
       {moduleType === 'juridica' ? (
         <section className="space-y-4">
-          <AlertBanner type="info">Modulo Persona Juridica: incluye representantes legales, RIF, acta, registro e imagenes del comercio.</AlertBanner>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <DocumentSlot
-              label="Cedulas de Representantes Legales"
-              required
-              multiple
-              docKind="CEDULA_REPRESENTANTE"
-              onChange={setJuridicaRepresentantes}
-            />
-            <DocumentSlot label="RIF del Comercio" required docKind="RIF" onChange={setJuridicaRif} />
-            <DocumentSlot label="Acta Constitutiva" required docKind="ACTA" onChange={setJuridicaActa} />
-            <DocumentSlot label="Registro Mercantil" required docKind="REGISTRO" onChange={setJuridicaRegistro} />
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <OcrAutofillCard title="Autocompletado OCR · Representante (1ro)" item={juridicaRepresentantes[0]} />
-            <OcrAutofillCard title="Autocompletado OCR · RIF Comercio" item={juridicaRif[0]} />
-          </div>
-
-          <CommerceImages onChange={setJuridicaImages} />
+          <AlertBanner type="info">Persona Jurídica: representantes, RIF, acta, registro y fotos del comercio.</AlertBanner>
 
           <section className="rounded-xl border border-ubii-border bg-white p-4 shadow-soft">
-            <p className="text-sm font-semibold text-ubii-black">Completitud del modulo:</p>
-            <p className={`mt-2 text-lg font-bold ${juridicaComplete ? 'text-emerald-700' : 'text-amber-700'}`}>
-              {juridicaComplete ? 'COMPLETO' : 'PENDIENTE'}
-            </p>
-            <p className="text-xs text-gray-600">Las advertencias (ej. cedula vencida) no bloquean el proceso.</p>
+            <p className="text-sm font-semibold text-ubii-black">Paso {juridicaStep} de 2</p>
+            <p className="text-xs text-gray-600">{juridicaStep === 1 ? 'Identificación' : 'Imágenes del comercio'}</p>
           </section>
+
+          <div className={juridicaStep === 1 ? 'space-y-4' : 'hidden'}>
+            <div className="grid gap-4 md:grid-cols-2">
+              <DocumentSlot
+                label="Cedulas de Representantes Legales"
+                required
+                multiple
+                docKind="CEDULA_REPRESENTANTE"
+                onChange={setJuridicaRepresentantes}
+              />
+              <DocumentSlot label="RIF del Comercio" required docKind="RIF" onChange={setJuridicaRif} />
+              <DocumentSlot label="Acta Constitutiva" required docKind="ACTA" onChange={setJuridicaActa} />
+              <DocumentSlot label="Registro Mercantil" required docKind="REGISTRO" onChange={setJuridicaRegistro} />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <OcrAutofillCard title="Datos detectados · Representante (1ro)" item={juridicaRepresentantes[0]} />
+              <OcrAutofillCard title="Datos detectados · RIF Comercio" item={juridicaRif[0]} />
+            </div>
+
+            <SelfieProof label="Prueba de vida (selfie del representante)" onChange={(payload) => setJuridicaSelfie(Boolean(payload?.file))} />
+
+            <PrimaryButton onClick={() => setJuridicaStep(2)} disabled={!juridicaStep1Ready}>
+              Continuar al Paso 2
+            </PrimaryButton>
+          </div>
+
+          <div className={juridicaStep === 2 ? 'space-y-4' : 'hidden'}>
+            <CommerceImages onChange={setJuridicaImages} />
+            <div className="flex gap-2">
+              <PrimaryButton onClick={() => setJuridicaStep(1)}>Volver al Paso 1</PrimaryButton>
+              <PrimaryButton disabled={!isImagesComplete(juridicaImages)}>Finalizar módulo</PrimaryButton>
+            </div>
+          </div>
         </section>
       ) : null}
     </main>
