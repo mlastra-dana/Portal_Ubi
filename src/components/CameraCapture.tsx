@@ -22,6 +22,15 @@ export function CameraCapture({ title, description, onCaptured, current }: Camer
     };
   }, []);
 
+  useEffect(() => {
+    if (!isOpen || !videoRef.current || !streamRef.current) return;
+    const video = videoRef.current;
+    video.srcObject = streamRef.current;
+    video.play().catch(() => {
+      setError('No se pudo reproducir la camara. Intenta nuevamente.');
+    });
+  }, [isOpen]);
+
   const meta = useMemo(() => {
     if (!current) return null;
     return `${current.mimeType || 'image/jpeg'} · ${formatBytes(current.size)}`;
@@ -41,10 +50,6 @@ export function CameraCapture({ title, description, onCaptured, current }: Camer
       });
       streamRef.current = stream;
       setIsOpen(true);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
     } catch {
       setError('No se pudo abrir la camara. Revisa permisos del navegador.');
     }
@@ -98,7 +103,7 @@ export function CameraCapture({ title, description, onCaptured, current }: Camer
 
       {isOpen ? (
         <div className="space-y-3">
-          <video ref={videoRef} className="h-48 w-full rounded-lg bg-black object-cover sm:h-64" playsInline muted />
+          <video ref={videoRef} className="h-48 w-full rounded-lg bg-black object-cover sm:h-64" playsInline muted autoPlay />
           <div className="flex gap-2">
             <Button type="button" onClick={takePhoto}>
               Tomar foto

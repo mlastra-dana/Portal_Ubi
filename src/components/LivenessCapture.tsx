@@ -28,6 +28,15 @@ export function LivenessCapture({ selfie, shortVideo, gestureDone, onChange }: L
     };
   }, []);
 
+  useEffect(() => {
+    if (!isOpen || !videoRef.current || !streamRef.current) return;
+    const video = videoRef.current;
+    video.srcObject = streamRef.current;
+    video.play().catch(() => {
+      setError('No se pudo reproducir la camara frontal.');
+    });
+  }, [isOpen]);
+
   const canRecord = useMemo(() => typeof MediaRecorder !== 'undefined', []);
 
   const openCamera = async () => {
@@ -43,10 +52,6 @@ export function LivenessCapture({ selfie, shortVideo, gestureDone, onChange }: L
       });
       streamRef.current = stream;
       setIsOpen(true);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
     } catch {
       setError('Permiso de camara denegado para selfie de vida.');
     }
@@ -139,7 +144,7 @@ export function LivenessCapture({ selfie, shortVideo, gestureDone, onChange }: L
         </Button>
       ) : (
         <div className="space-y-3">
-          <video ref={videoRef} className="h-56 w-full rounded-lg bg-black object-cover sm:h-72" muted playsInline />
+          <video ref={videoRef} className="h-56 w-full rounded-lg bg-black object-cover sm:h-72" muted playsInline autoPlay />
           <div className="rounded-lg bg-bgSoft p-3">
             <p className="text-xs font-semibold text-primary">Gesto guiado:</p>
             <p className="text-sm text-textMain">{gestures[gestureStep]}</p>
