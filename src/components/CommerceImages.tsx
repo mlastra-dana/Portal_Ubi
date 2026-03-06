@@ -65,6 +65,18 @@ export function CommerceImages({ onChange }: Props) {
     });
   };
 
+  const clearItem = (kind: CommerceImageKind) => {
+    setItems((prev) => {
+      const next = prev.map((item) => {
+        if (item.kind !== kind) return item;
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+        return { ...item, blob: undefined, file: undefined, previewUrl: undefined, error: undefined };
+      });
+      onChange?.(next);
+      return next;
+    });
+  };
+
   const capturePhoto = async (kind: CommerceImageKind) => {
     if (!videoRef.current) return;
     const canvas = document.createElement('canvas');
@@ -113,7 +125,20 @@ export function CommerceImages({ onChange }: Props) {
                 />
               </label>
             </div>
-            {item.previewUrl ? <img src={item.previewUrl} alt={`Preview ${item.label}`} className="h-40 w-full rounded-xl object-cover" /> : null}
+            {item.previewUrl ? (
+              <div className="relative">
+                <img src={item.previewUrl} alt={`Preview ${item.label}`} className="h-40 w-full rounded-xl object-cover" />
+                <button
+                  type="button"
+                  onClick={() => clearItem(item.kind)}
+                  className="absolute right-2 top-2 rounded-full border border-ubii-border bg-white px-2 py-0.5 text-xs font-bold text-gray-700"
+                  aria-label={`Eliminar ${item.label}`}
+                  title="Eliminar adjunto"
+                >
+                  x
+                </button>
+              </div>
+            ) : null}
           </article>
         ))}
       </div>

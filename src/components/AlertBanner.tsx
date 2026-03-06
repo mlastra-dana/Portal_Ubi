@@ -8,5 +8,17 @@ export function AlertBanner({ type, children }: PropsWithChildren<{ type: 'info'
     error: 'border-red-300 bg-red-100 text-red-700'
   };
 
-  return <div className={`rounded-xl border px-3 py-2 text-sm ${styles[type]}`}>{children}</div>;
+  const icon = {
+    info: 'i',
+    warning: '!',
+    success: '✓',
+    error: '✕'
+  }[type];
+
+  return (
+    <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm ${styles[type]}`}>
+      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-current text-xs font-bold">{icon}</span>
+      <span>{children}</span>
+    </div>
+  );
 }

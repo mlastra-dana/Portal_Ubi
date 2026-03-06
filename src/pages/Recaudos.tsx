@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertBanner } from '../components/AlertBanner';
 import { CommerceImages } from '../components/CommerceImages';
 import { DocumentSlot } from '../components/DocumentSlot';
 import { SelfieProof } from '../components/SelfieProof';
@@ -53,47 +52,50 @@ export default function Recaudos() {
 
   useEffect(() => {
     const cedula = naturalCedula[0];
-    if (!cedula) return;
+    if (!cedula) {
+      setNaturalNombres('');
+      setNaturalApellidos('');
+      setNaturalCedulaId('');
+      return;
+    }
     const extracted = extractCedulaAutofill(cedula.rawText ?? '');
     const nameSource = extracted.nombres && extracted.apellidos ? `${extracted.nombres} ${extracted.apellidos}` : cedula.fields.nombres ?? '';
     const { nombres, apellidos } = splitFullName(nameSource);
-    if (nombres) setNaturalNombres(nombres);
-    if (apellidos) setNaturalApellidos(apellidos);
+    setNaturalNombres(nombres);
+    setNaturalApellidos(apellidos);
     const cedulaNumero = extracted.cedula ?? cedula.fields.numeroId;
-    if (cedulaNumero) setNaturalCedulaId(cedulaNumero);
+    setNaturalCedulaId(cedulaNumero ?? '');
   }, [naturalCedula]);
 
   useEffect(() => {
-    const rif = naturalRif[0];
-    if (!rif) return;
-    if (!naturalNombres.trim()) {
-      const nameSource = rif.fields.nombres ?? '';
-      const split = splitFullName(nameSource);
-      if (split.nombres) setNaturalNombres(split.nombres);
-      if (split.apellidos) setNaturalApellidos(split.apellidos);
-    }
-  }, [naturalRif, naturalNombres]);
-
-  useEffect(() => {
     const rif = juridicaRif[0];
-    if (!rif) return;
+    if (!rif) {
+      setJuridicaRazonSocial('');
+      setJuridicaRifEmpresa('');
+      return;
+    }
     const extracted = extractRifAutofill(rif.rawText ?? '');
     const razonSocial = extracted.razonSocial ?? rif.fields.nombres ?? '';
-    if (razonSocial) setJuridicaRazonSocial(razonSocial);
+    setJuridicaRazonSocial(razonSocial);
     const rifNumero = extracted.rif ?? rif.fields.numeroId;
-    if (rifNumero) setJuridicaRifEmpresa(rifNumero);
+    setJuridicaRifEmpresa(rifNumero ?? '');
   }, [juridicaRif]);
 
   useEffect(() => {
     const rep = juridicaRepresentantes[0];
-    if (!rep) return;
+    if (!rep) {
+      setRepNombres('');
+      setRepApellidos('');
+      setRepCedula('');
+      return;
+    }
     const extracted = extractCedulaAutofill(rep.rawText ?? '');
     const nameSource = extracted.nombres && extracted.apellidos ? `${extracted.nombres} ${extracted.apellidos}` : rep.fields.nombres ?? '';
     const { nombres, apellidos } = splitFullName(nameSource);
-    if (nombres) setRepNombres(nombres);
-    if (apellidos) setRepApellidos(apellidos);
+    setRepNombres(nombres);
+    setRepApellidos(apellidos);
     const cedulaNumero = extracted.cedula ?? rep.fields.numeroId;
-    if (cedulaNumero) setRepCedula(cedulaNumero);
+    setRepCedula(cedulaNumero ?? '');
   }, [juridicaRepresentantes]);
 
   const naturalDataReady = useMemo(
@@ -105,6 +107,7 @@ export default function Recaudos() {
     () => hasUploaded(naturalCedula) && hasUploaded(naturalRif) && naturalSelfie && naturalDataReady,
     [naturalCedula, naturalDataReady, naturalRif, naturalSelfie]
   );
+  const naturalStep2Ready = useMemo(() => isImagesComplete(naturalImages), [naturalImages]);
 
   const juridicaDataReady = useMemo(
     () =>
@@ -129,6 +132,8 @@ export default function Recaudos() {
       juridicaDataReady,
     [juridicaActaRegistro, juridicaDataReady, juridicaRepresentantes, juridicaRif, juridicaSelfie]
   );
+  const juridicaStep2Ready = useMemo(() => isImagesComplete(juridicaImages), [juridicaImages]);
+  const navButtonClass = '!border-white !bg-white !text-ubii-blue';
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-10 md:px-6">
@@ -139,8 +144,6 @@ export default function Recaudos() {
 
       {moduleType === 'natural' ? (
         <section className="space-y-4">
-          <AlertBanner type="info">Persona Natural: cédula, RIF y tres fotos del comercio.</AlertBanner>
-
           <section className="rounded-xl border border-ubii-border bg-white p-4 shadow-soft">
             <p className="text-sm font-semibold text-ubii-black">Paso {naturalStep} de 2</p>
             <p className="text-xs text-gray-600">{naturalStep === 1 ? 'Identificación' : 'Imágenes del comercio'}</p>
@@ -152,10 +155,10 @@ export default function Recaudos() {
               <DocumentSlot label="RIF" required docKind="RIF" onChange={setNaturalRif} />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <section className="rounded-xl border border-ubii-border bg-white p-6 shadow-soft md:col-span-2">
+            <div className="grid gap-4 lg:grid-cols-3">
+              <section className="rounded-xl border border-ubii-border bg-white p-6 shadow-soft lg:col-span-2">
                 <h3 className="text-lg font-semibold text-ubii-blue">Identificación</h3>
-                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                <div className="mt-4 grid gap-4">
                   <label className="text-sm font-medium text-ubii-black">
                     Nombres
                     <input
@@ -199,23 +202,32 @@ export default function Recaudos() {
                   </label>
                 </div>
               </section>
+              <SelfieProof
+                className="self-start"
+                label="Prueba de vida (selfie)"
+                onChange={(payload) => setNaturalSelfie(Boolean(payload?.file))}
+              />
             </div>
 
-            <SelfieProof label="Prueba de vida (selfie)" onChange={(payload) => setNaturalSelfie(Boolean(payload?.file))} />
-
-            <div className="flex gap-2">
-              <PrimaryButton onClick={() => navigate('/demo')}>Volver</PrimaryButton>
-              <PrimaryButton onClick={() => setNaturalStep(2)} disabled={!naturalStep1Ready}>
-                Continuar al Paso 2
+            <div className="flex items-center justify-between gap-3">
+              <PrimaryButton className={navButtonClass} onClick={() => navigate('/demo')}>
+                Volver
+              </PrimaryButton>
+              <PrimaryButton className={navButtonClass} onClick={() => setNaturalStep(2)} disabled={!naturalStep1Ready}>
+                Continuar
               </PrimaryButton>
             </div>
           </div>
 
           <div className={naturalStep === 2 ? 'space-y-4' : 'hidden'}>
             <CommerceImages onChange={setNaturalImages} />
-            <div className="flex gap-2">
-              <PrimaryButton onClick={() => setNaturalStep(1)}>Volver al Paso 1</PrimaryButton>
-              <PrimaryButton disabled={!isImagesComplete(naturalImages)}>Finalizar módulo</PrimaryButton>
+            <div className="flex items-center justify-between gap-3">
+              <PrimaryButton className={navButtonClass} onClick={() => setNaturalStep(1)}>
+                Volver
+              </PrimaryButton>
+              <PrimaryButton className={navButtonClass} disabled={!naturalStep2Ready}>
+                Continuar
+              </PrimaryButton>
             </div>
           </div>
         </section>
@@ -223,8 +235,6 @@ export default function Recaudos() {
 
       {moduleType === 'juridica' ? (
         <section className="space-y-4">
-          <AlertBanner type="info">Persona Jurídica: representantes, RIF, acta/registro y fotos del comercio.</AlertBanner>
-
           <section className="rounded-xl border border-ubii-border bg-white p-4 shadow-soft">
             <p className="text-sm font-semibold text-ubii-black">Paso {juridicaStep} de 2</p>
             <p className="text-xs text-gray-600">{juridicaStep === 1 ? 'Identificación' : 'Imágenes del comercio'}</p>
@@ -239,98 +249,109 @@ export default function Recaudos() {
               <DocumentSlot
                 label="Cédula del representante"
                 required
-                description="Cargue la cédula del representante principal."
                 docKind="CEDULA_REPRESENTANTE"
                 onChange={setJuridicaRepresentantes}
               />
             </div>
 
-            <div className="space-y-4">
-              <section className="rounded-xl border border-ubii-border bg-white p-6 shadow-soft">
-                <h3 className="text-lg font-semibold text-ubii-blue">Datos de la empresa</h3>
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  <label className="text-sm font-medium text-ubii-black">
-                    Razón social
-                    <input
-                      value={juridicaRazonSocial}
-                      onChange={(event) => setJuridicaRazonSocial(event.target.value)}
-                      className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
-                    />
-                  </label>
-                  <label className="text-sm font-medium text-ubii-black">
-                    RIF de la empresa
-                    <input
-                      value={juridicaRifEmpresa}
-                      onChange={(event) => setJuridicaRifEmpresa(event.target.value)}
-                      className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
-                    />
-                  </label>
-                </div>
-              </section>
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="space-y-4 lg:col-span-2">
+                <section className="rounded-xl border border-ubii-border bg-white p-6 shadow-soft">
+                  <h3 className="text-lg font-semibold text-ubii-blue">Datos de la empresa</h3>
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <label className="text-sm font-medium text-ubii-black">
+                      Razón social
+                      <input
+                        value={juridicaRazonSocial}
+                        onChange={(event) => setJuridicaRazonSocial(event.target.value)}
+                        className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                      />
+                    </label>
+                    <label className="text-sm font-medium text-ubii-black">
+                      RIF de la empresa
+                      <input
+                        value={juridicaRifEmpresa}
+                        onChange={(event) => setJuridicaRifEmpresa(event.target.value)}
+                        className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                      />
+                    </label>
+                  </div>
+                </section>
 
-              <section className="rounded-xl border border-ubii-border bg-white p-6 shadow-soft">
-                <h3 className="text-lg font-semibold text-ubii-blue">Datos del representante legal</h3>
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  <label className="text-sm font-medium text-ubii-black">
-                    Nombres
-                    <input
-                      value={repNombres}
-                      onChange={(event) => setRepNombres(event.target.value)}
-                      className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
-                    />
-                  </label>
-                  <label className="text-sm font-medium text-ubii-black">
-                    Apellidos
-                    <input
-                      value={repApellidos}
-                      onChange={(event) => setRepApellidos(event.target.value)}
-                      className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
-                    />
-                  </label>
-                  <label className="text-sm font-medium text-ubii-black">
-                    Cédula de identidad
-                    <input
-                      value={repCedula}
-                      onChange={(event) => setRepCedula(event.target.value)}
-                      className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
-                    />
-                  </label>
-                  <label className="text-sm font-medium text-ubii-black">
-                    Número de teléfono
-                    <input
-                      value={repTelefono}
-                      onChange={(event) => setRepTelefono(event.target.value)}
-                      className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
-                    />
-                  </label>
-                  <label className="text-sm font-medium text-ubii-black">
-                    Correo
-                    <input
-                      type="email"
-                      value={repCorreo}
-                      onChange={(event) => setRepCorreo(event.target.value)}
-                      className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
-                    />
-                  </label>
-                </div>
-              </section>
+                <section className="rounded-xl border border-ubii-border bg-white p-6 shadow-soft">
+                  <h3 className="text-lg font-semibold text-ubii-blue">Datos del representante legal</h3>
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <label className="text-sm font-medium text-ubii-black">
+                      Nombres
+                      <input
+                        value={repNombres}
+                        onChange={(event) => setRepNombres(event.target.value)}
+                        className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                      />
+                    </label>
+                    <label className="text-sm font-medium text-ubii-black">
+                      Apellidos
+                      <input
+                        value={repApellidos}
+                        onChange={(event) => setRepApellidos(event.target.value)}
+                        className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                      />
+                    </label>
+                    <label className="text-sm font-medium text-ubii-black">
+                      Cédula de identidad
+                      <input
+                        value={repCedula}
+                        onChange={(event) => setRepCedula(event.target.value)}
+                        className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                      />
+                    </label>
+                    <label className="text-sm font-medium text-ubii-black">
+                      Número de teléfono
+                      <input
+                        value={repTelefono}
+                        onChange={(event) => setRepTelefono(event.target.value)}
+                        className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                      />
+                    </label>
+                    <label className="text-sm font-medium text-ubii-black md:col-span-2">
+                      Correo
+                      <input
+                        type="email"
+                        value={repCorreo}
+                        onChange={(event) => setRepCorreo(event.target.value)}
+                        className="mt-1 w-full rounded-xl border border-ubii-border bg-white px-3 py-2 text-sm text-ubii-black"
+                      />
+                    </label>
+                  </div>
+                </section>
+              </div>
+
+              <SelfieProof
+                className="self-start"
+                label="Prueba de vida (selfie del representante)"
+                onChange={(payload) => setJuridicaSelfie(Boolean(payload?.file))}
+              />
             </div>
 
-            <SelfieProof label="Prueba de vida (selfie del representante)" onChange={(payload) => setJuridicaSelfie(Boolean(payload?.file))} />
-
-            <div className="flex gap-2">
-              <PrimaryButton onClick={() => navigate('/demo')}>Volver</PrimaryButton>
-              <PrimaryButton onClick={() => setJuridicaStep(2)} disabled={!juridicaStep1Ready}>
-                Continuar al Paso 2
+            <div className="flex items-center justify-between gap-3">
+              <PrimaryButton className={navButtonClass} onClick={() => navigate('/demo')}>
+                Volver
+              </PrimaryButton>
+              <PrimaryButton className={navButtonClass} onClick={() => setJuridicaStep(2)} disabled={!juridicaStep1Ready}>
+                Continuar
               </PrimaryButton>
             </div>
           </div>
 
           <div className={juridicaStep === 2 ? 'space-y-4' : 'hidden'}>
             <CommerceImages onChange={setJuridicaImages} />
-            <div className="flex gap-2">
-              <PrimaryButton onClick={() => setJuridicaStep(1)}>Volver al Paso 1</PrimaryButton>
-              <PrimaryButton disabled={!isImagesComplete(juridicaImages)}>Finalizar módulo</PrimaryButton>
+            <div className="flex items-center justify-between gap-3">
+              <PrimaryButton className={navButtonClass} onClick={() => setJuridicaStep(1)}>
+                Volver
+              </PrimaryButton>
+              <PrimaryButton className={navButtonClass} disabled={!juridicaStep2Ready}>
+                Continuar
+              </PrimaryButton>
             </div>
           </div>
         </section>

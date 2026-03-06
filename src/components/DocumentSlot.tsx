@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react';
-import { ocrFile } from '../services/ocr/ocrEngine';
+import { ocrFile, ocrFileFast } from '../services/ocr/ocrEngine';
 import { extractFields } from '../services/ocr/fieldExtraction';
 import type { DocKind, UploadedDocumentResult } from '../types/recaudos';
 import { isExpired, parseDateStrict } from '../utils/date';
@@ -17,9 +17,15 @@ type Props = {
 const ACCEPT = '.pdf,image/png,image/jpeg,image/jpg';
 
 const emptyFields = { nombres: null, numeroId: null, fechaVencimiento: null };
+const normalizeText = (value: string): string =>
+  value
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 
 const supportsExpiryWarning = (docKind: DocKind): boolean => docKind === 'CEDULA' || docKind === 'CEDULA_REPRESENTANTE' || docKind === 'RIF';
-const requiresOcr = (docKind: DocKind): boolean => docKind === 'CEDULA' || docKind === 'CEDULA_REPRESENTANTE' || docKind === 'RIF';
+const requiresOcr = (docKind: DocKind): boolean =>
+  docKind === 'CEDULA' || docKind === 'CEDULA_REPRESENTANTE' || docKind === 'RIF' || docKind === 'ACTA_REGISTRO';
 const isExpiringSoon = (date: Date, months = 6): boolean => {
   const now = new Date();
   const limit = new Date(now);
@@ -47,7 +53,7 @@ const validateOcrDocKind = (
   rawText: string,
   fields: { numeroId: string | null }
 ): { status: 'VALIDO' | 'REVISAR'; message: string } => {
-  const upper = rawText.toUpperCase();
+  const upper = normalizeText(rawText);
   const normalizedId = (fields.numeroId ?? '').toUpperCase();
 
   if (docKind === 'RIF') {
@@ -67,16 +73,21 @@ const validateOcrDocKind = (
   return { status: 'REVISAR', message: 'Tipo de documento no reconocido.' };
 };
 
-const validateActaRegistro = (file: File): { status: 'VALIDO' | 'REVISAR'; message: string } => {
-  const lowerName = file.name.toLowerCase();
-  const looksLikeActaRegistro =
-    lowerName.includes('acta') ||
-    lowerName.includes('constitutiva') ||
-    lowerName.includes('registro mercantil') ||
-    lowerName.includes('mercantil') ||
-    lowerName.includes('registro');
+const validateActaRegistro = (file: File, rawText: string): { status: 'VALIDO' | 'REVISAR'; message: string } => {
+  const normalizedName = normalizeText(file.name);
+  const normalizedRaw = normalizeText(rawText);
+  const mismatchKeywords = ['NACIMIENTO', 'CEDULA', 'CÉDULA', 'PASAPORTE', 'RIF', 'DEFUNCION', 'MATRIMONIO'];
+  const contentKeywords = ['REGISTRO MERCANTIL', 'ACTA CONSTITUTIVA', 'REGISTRO DE COMERCIO', 'DOCUMENTO CONSTITUTIVO', 'ESTATUTOS'];
 
-  if (looksLikeActaRegistro) {
+  const hasStrongMatchFromName =
+    normalizedName.includes('REGISTRO MERCANTIL') ||
+    normalizedName.includes('ACTA CONSTITUTIVA') ||
+    (normalizedName.includes('REGISTRO') && normalizedName.includes('MERCANTIL')) ||
+    (normalizedName.includes('ACTA') && normalizedName.includes('CONSTITUTIVA'));
+  const hasStrongMatchFromText = contentKeywords.some((token) => normalizedRaw.includes(token));
+  const hasClearMismatch = mismatchKeywords.some((token) => normalizedName.includes(token) || normalizedRaw.includes(token));
+
+  if ((hasStrongMatchFromName || hasStrongMatchFromText) && !hasClearMismatch) {
     return {
       status: 'VALIDO',
       message: 'Documento válido como Acta constitutiva / Registro mercantil.'
@@ -85,8 +96,16 @@ const validateActaRegistro = (file: File): { status: 'VALIDO' | 'REVISAR'; messa
 
   return {
     status: 'REVISAR',
-    message: 'No se pudo validar el tipo de documento como Acta constitutiva / Registro mercantil.'
+    message: 'Este documento no corresponde a Registro mercantil / Acta constitutiva.'
   };
+};
+
+const getValidationAlertType = (status?: 'VALIDO' | 'REVISAR', message?: string): 'success' | 'warning' | 'error' | null => {
+  if (status === 'VALIDO') return 'success';
+  if (status !== 'REVISAR') return null;
+  const normalized = normalizeText(message ?? '');
+  if (normalized.includes('NO CORRESPONDE') || normalized.includes('NO PARECE')) return 'error';
+  return 'warning';
 };
 
 export function DocumentSlot({ label, required = false, multiple = false, docKind, description, onChange }: Props) {
@@ -130,12 +149,15 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
 
     try {
       if (requiresOcr(docKind)) {
-        const { rawText, confidence } = await ocrFile(file, (progress) => setItem({ progress }));
-        const fields = extractFields(rawText);
-        const validation = validateOcrDocKind(docKind, rawText, fields);
+        const { rawText, confidence } =
+          docKind === 'ACTA_REGISTRO'
+            ? await ocrFileFast(file, (progress) => setItem({ progress }))
+            : await ocrFile(file, (progress) => setItem({ progress }));
+        const fields = docKind === 'ACTA_REGISTRO' ? emptyFields : extractFields(rawText);
+        const validation = docKind === 'ACTA_REGISTRO' ? validateActaRegistro(file, rawText) : validateOcrDocKind(docKind, rawText, fields);
 
         let parseWarning: string | undefined;
-        if (fields.fechaVencimiento && !parseDateStrict(fields.fechaVencimiento)) {
+        if (docKind !== 'ACTA_REGISTRO' && fields.fechaVencimiento && !parseDateStrict(fields.fechaVencimiento)) {
           parseWarning = 'Se detecto una fecha, pero no pudo parsearse de forma estricta.';
         }
 
@@ -149,17 +171,6 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
           validationStatus: validation.status,
           validationMessage: validation.message
         });
-      } else {
-        const validation = validateActaRegistro(file);
-        setItem({
-          processing: false,
-          progress: 100,
-          rawText: '',
-          confidence: null,
-          fields: emptyFields,
-          validationStatus: validation.status,
-          validationMessage: validation.message
-        });
       }
     } catch (error) {
       setItem({
@@ -168,6 +179,16 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
         error: error instanceof Error ? error.message : 'No se pudo procesar el OCR.'
       });
     }
+  };
+
+  const removeResult = (id: string) => {
+    setResults((prev) => {
+      const target = prev.find((item) => item.id === id);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      const next = prev.filter((item) => item.id !== id);
+      onChange?.(next);
+      return next;
+    });
   };
 
   const cardState = useMemo(() => {
@@ -230,10 +251,22 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
         const showSoonWarning = hasExpiry && parsedExpiry ? !showExpiredWarning && isExpiringSoon(parsedExpiry, 6) : false;
         const showOcr = requiresOcr(docKind);
         const docLabel = docKind === 'RIF' ? 'RIF' : 'Cédula';
+        const validationAlertType = getValidationAlertType(result.validationStatus, result.validationMessage);
 
         return (
           <article key={result.id} className="space-y-3 rounded-xl border border-ubii-border bg-ubii-light p-4">
-            <p className="text-sm font-semibold text-ubii-black">{result.file.name}</p>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-ubii-blue/30 bg-white px-3 py-2">
+              <p className="truncate text-sm font-semibold text-ubii-black">Archivo: {result.file.name}</p>
+              <button
+                type="button"
+                onClick={() => removeResult(result.id)}
+                className="rounded-full border border-ubii-border bg-white px-2 py-0.5 text-xs font-bold text-gray-700"
+                aria-label={`Eliminar ${result.file.name}`}
+                title="Eliminar adjunto"
+              >
+                x
+              </button>
+            </div>
 
             {result.previewUrl ? (
               <div className="overflow-hidden rounded-xl border border-ubii-border bg-white">
@@ -246,10 +279,30 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
             ) : null}
 
             {result.processing ? (
-              <div className="space-y-2">
-                <p className="text-sm text-ubii-black">{showOcr ? 'Procesando OCR...' : 'Validando documento...'}</p>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-white">
-                  <div className="h-full bg-ubii-blue" style={{ width: `${result.progress}%` }} />
+              <div className="space-y-3 rounded-lg border border-ubii-blue/30 bg-white p-3">
+                <p className="flex items-center gap-2 text-sm font-semibold text-ubii-black">
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-ubii-blue border-t-transparent" />
+                  {showOcr ? 'Validando documento...' : 'Validando documento...'}
+                </p>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs text-gray-600">
+                    <span>Carga</span>
+                    <span>100%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-ubii-light">
+                    <div className="h-full w-full rounded-full bg-ubii-blue" />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs text-gray-600">
+                    <span>{showOcr ? 'Validación OCR' : 'Validación'}</span>
+                    <span>{Math.round(result.progress)}%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-ubii-light">
+                    <div className="h-full rounded-full bg-ubii-blue" style={{ width: `${Math.max(5, result.progress)}%` }} />
+                  </div>
                 </div>
               </div>
             ) : null}
@@ -258,8 +311,7 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
 
             {!result.processing && !result.error && showOcr ? (
               <div className="space-y-2 text-sm text-ubii-black">
-                {result.validationStatus === 'REVISAR' ? <AlertBanner type="warning">{result.validationMessage}</AlertBanner> : null}
-                {result.validationStatus === 'VALIDO' ? <AlertBanner type="success">{result.validationMessage}</AlertBanner> : null}
+                {validationAlertType && result.validationMessage ? <AlertBanner type={validationAlertType}>{result.validationMessage}</AlertBanner> : null}
                 {showExpiredWarning ? <AlertBanner type="warning">{docLabel} vencido</AlertBanner> : null}
                 {showSoonWarning && parsedExpiry ? (
                   <AlertBanner type="warning">{`${docLabel} próximo a vencerse (le quedan ${getTimeRemainingLabel(parsedExpiry)})`}</AlertBanner>
@@ -273,13 +325,7 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
               </div>
             ) : null}
 
-            {!result.processing && !result.error && !showOcr ? (
-              <div className="space-y-2 text-sm text-ubii-black">
-                {result.validationStatus === 'VALIDO' ? <AlertBanner type="success">{result.validationMessage}</AlertBanner> : null}
-                {result.validationStatus === 'REVISAR' ? <AlertBanner type="warning">{result.validationMessage}</AlertBanner> : null}
-                <p className="text-xs text-gray-700">Este documento no usa OCR en la demo.</p>
-              </div>
-            ) : null}
+            {!result.processing && !result.error && !showOcr ? <div className="space-y-2 text-sm text-ubii-black" /> : null}
           </article>
         );
       })}

@@ -4,9 +4,10 @@ import { PrimaryButton } from './ui/PrimaryButton';
 type Props = {
   label?: string;
   onChange?: (payload?: { file: File; previewUrl: string }) => void;
+  className?: string;
 };
 
-export function SelfieProof({ label = 'Prueba de vida (selfie)', onChange }: Props) {
+export function SelfieProof({ label = 'Prueba de vida (selfie)', onChange, className = '' }: Props) {
   const [previewUrl, setPreviewUrl] = useState<string>();
   const [cameraOpen, setCameraOpen] = useState(false);
   const [error, setError] = useState('');
@@ -52,6 +53,12 @@ export function SelfieProof({ label = 'Prueba de vida (selfie)', onChange }: Pro
     onChange?.({ file, previewUrl: nextPreview });
   };
 
+  const clearSelfie = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(undefined);
+    onChange?.(undefined);
+  };
+
   const captureSelfie = async () => {
     if (!videoRef.current) return;
     const canvas = document.createElement('canvas');
@@ -68,7 +75,7 @@ export function SelfieProof({ label = 'Prueba de vida (selfie)', onChange }: Pro
   };
 
   return (
-    <section className="space-y-3 rounded-xl border border-ubii-border bg-white p-6 shadow-soft">
+    <section className={`h-fit space-y-3 rounded-xl border border-ubii-border bg-white p-6 shadow-soft ${className}`}>
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-ubii-black">{label} *</h3>
         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${previewUrl ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}`}>
@@ -78,26 +85,13 @@ export function SelfieProof({ label = 'Prueba de vida (selfie)', onChange }: Pro
 
       <div className="flex flex-wrap gap-2">
         <PrimaryButton className="px-3 py-2 text-sm" onClick={startCamera}>
-          Tomar selfie
+          Abrir cámara
         </PrimaryButton>
-        <label className="inline-flex cursor-pointer items-center rounded-lg border border-ubii-border bg-white px-3 py-2 text-sm font-semibold text-ubii-black">
-          Subir selfie
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/jpg"
-            className="sr-only"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (!file) return;
-              setSelfie(file);
-            }}
-          />
-        </label>
       </div>
 
       {cameraOpen ? (
-        <div className="space-y-2 rounded-xl border border-ubii-border bg-ubii-light p-4">
-          <video ref={videoRef} autoPlay playsInline muted className="h-56 w-full rounded-xl bg-black object-cover" />
+        <div className="max-w-md space-y-2 rounded-xl border border-ubii-border bg-ubii-light p-4">
+          <video ref={videoRef} autoPlay playsInline muted className="h-44 w-full rounded-xl bg-black object-cover" />
           <div className="flex gap-2">
             <PrimaryButton className="px-3 py-2 text-sm" onClick={() => void captureSelfie()}>
               Capturar
@@ -109,7 +103,20 @@ export function SelfieProof({ label = 'Prueba de vida (selfie)', onChange }: Pro
         </div>
       ) : null}
 
-      {previewUrl ? <img src={previewUrl} alt="Selfie prueba de vida" className="h-44 w-44 rounded-xl object-cover" /> : null}
+      {previewUrl ? (
+        <div className="relative w-fit">
+          <img src={previewUrl} alt="Selfie prueba de vida" className="h-44 w-44 rounded-xl object-cover" />
+          <button
+            type="button"
+            onClick={clearSelfie}
+            className="absolute right-2 top-2 rounded-full border border-ubii-border bg-white px-2 py-0.5 text-xs font-bold text-gray-700"
+            aria-label="Eliminar selfie"
+            title="Eliminar adjunto"
+          >
+            x
+          </button>
+        </div>
+      ) : null}
       {error ? <p className="text-xs text-amber-700">{error}</p> : null}
     </section>
   );
