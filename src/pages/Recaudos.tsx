@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertBanner } from '../components/AlertBanner';
 import { CommerceImages } from '../components/CommerceImages';
 import { DocumentSlot } from '../components/DocumentSlot';
@@ -22,6 +22,7 @@ const splitFullName = (value: string): { nombres: string; apellidos: string } =>
 };
 
 export default function Recaudos() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const moduleType: ModuleType = searchParams.get('tipo') === 'juridica' ? 'juridica' : 'natural';
 
@@ -37,8 +38,6 @@ export default function Recaudos() {
   const [naturalCorreo, setNaturalCorreo] = useState('');
 
   const [juridicaRepresentantes, setJuridicaRepresentantes] = useState<UploadedDocumentResult[]>([]);
-  const [juridicaRepresentanteSecundario, setJuridicaRepresentanteSecundario] = useState<UploadedDocumentResult[]>([]);
-  const [showSecondRepresentative, setShowSecondRepresentative] = useState(false);
   const [juridicaRif, setJuridicaRif] = useState<UploadedDocumentResult[]>([]);
   const [juridicaActaRegistro, setJuridicaActaRegistro] = useState<UploadedDocumentResult[]>([]);
   const [juridicaImages, setJuridicaImages] = useState<CommerceImageItem[]>([]);
@@ -204,9 +203,12 @@ export default function Recaudos() {
 
             <SelfieProof label="Prueba de vida (selfie)" onChange={(payload) => setNaturalSelfie(Boolean(payload?.file))} />
 
-            <PrimaryButton onClick={() => setNaturalStep(2)} disabled={!naturalStep1Ready}>
-              Continuar al Paso 2
-            </PrimaryButton>
+            <div className="flex gap-2">
+              <PrimaryButton onClick={() => navigate('/demo')}>Volver</PrimaryButton>
+              <PrimaryButton onClick={() => setNaturalStep(2)} disabled={!naturalStep1Ready}>
+                Continuar al Paso 2
+              </PrimaryButton>
+            </div>
           </div>
 
           <div className={naturalStep === 2 ? 'space-y-4' : 'hidden'}>
@@ -241,16 +243,7 @@ export default function Recaudos() {
                     {hasUploaded(juridicaRepresentantes) ? 'Cargado' : 'Pendiente'}
                   </span>
                 </div>
-                <p className="text-sm text-gray-600">Cargue la cédula del representante principal. Puede agregar un segundo representante si aplica.</p>
-                {!showSecondRepresentative ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowSecondRepresentative(true)}
-                    className="inline-flex rounded-lg border border-ubii-border bg-white px-4 py-2 text-sm font-semibold text-ubii-black"
-                  >
-                    + Agregar segundo representante
-                  </button>
-                ) : null}
+                <p className="text-sm text-gray-600">Cargue la cédula del representante principal.</p>
 
                 <div className="border-t border-ubii-border pt-4">
                   <DocumentSlot
@@ -260,23 +253,10 @@ export default function Recaudos() {
                     onChange={setJuridicaRepresentantes}
                   />
                 </div>
-
-                {showSecondRepresentative ? (
-                  <div className="border-t border-ubii-border pt-4">
-                    <DocumentSlot
-                      label="Cédula del Representante 2 (Opcional)"
-                      docKind="CEDULA_REPRESENTANTE"
-                      onChange={setJuridicaRepresentanteSecundario}
-                    />
-                    {juridicaRepresentanteSecundario.length > 0 ? (
-                      <p className="mt-2 text-xs text-emerald-700">Segundo representante cargado.</p>
-                    ) : null}
-                  </div>
-                ) : null}
               </section>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-4">
               <section className="rounded-xl border border-ubii-border bg-white p-6 shadow-soft">
                 <h3 className="text-lg font-semibold text-ubii-blue">Datos de la empresa</h3>
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -301,7 +281,7 @@ export default function Recaudos() {
 
               <section className="rounded-xl border border-ubii-border bg-white p-6 shadow-soft">
                 <h3 className="text-lg font-semibold text-ubii-blue">Datos del representante legal</h3>
-                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
                   <label className="text-sm font-medium text-ubii-black">
                     Nombres
                     <input
@@ -349,9 +329,12 @@ export default function Recaudos() {
 
             <SelfieProof label="Prueba de vida (selfie del representante)" onChange={(payload) => setJuridicaSelfie(Boolean(payload?.file))} />
 
-            <PrimaryButton onClick={() => setJuridicaStep(2)} disabled={!juridicaStep1Ready}>
-              Continuar al Paso 2
-            </PrimaryButton>
+            <div className="flex gap-2">
+              <PrimaryButton onClick={() => navigate('/demo')}>Volver</PrimaryButton>
+              <PrimaryButton onClick={() => setJuridicaStep(2)} disabled={!juridicaStep1Ready}>
+                Continuar al Paso 2
+              </PrimaryButton>
+            </div>
           </div>
 
           <div className={juridicaStep === 2 ? 'space-y-4' : 'hidden'}>

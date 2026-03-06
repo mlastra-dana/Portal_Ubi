@@ -9,6 +9,7 @@ export type OcrExtractedFields = {
 export type UploadedDocumentResult = {
   id: string;
   file: File;
+  previewUrl?: string;
   progress: number;
   processing: boolean;
   rawText: string;

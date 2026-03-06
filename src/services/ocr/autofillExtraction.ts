@@ -14,7 +14,9 @@ const isLikelyNameText = (value: string): boolean => {
   if (!cleaned) return false;
   if (/\d/.test(cleaned)) return false;
   const words = cleaned.split(' ').filter(Boolean);
-  return words.length >= 2 && words.length <= 5;
+  if (words.length < 2 || words.length > 5) return false;
+  const longWords = words.filter((word) => word.length >= 3).length;
+  return longWords >= 1 && cleaned.replace(/\s+/g, '').length >= 6;
 };
 
 const looksLikePersonName = (value: string): boolean => {
@@ -33,9 +35,22 @@ const normalizeId = (value: string): string | null => {
   return null;
 };
 
+const cleanPersonValue = (value: string): string => {
+  return cleanName(value)
+    .replace(/\b(EA|ER|OD|DI|RR|ZN)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const getValueAfterKeyword = (line: string, keywordRegex: RegExp): string => {
+  const side = line.split('|')[0] ?? line;
+  return cleanPersonValue(side.replace(keywordRegex, ' '));
+};
+
 export function extractCedulaAutofill(rawText: string): { nombres: string | null; apellidos: string | null; cedula: string | null } {
   const text = rawText || '';
   const upper = text.toUpperCase();
+  const normalized = normalizeUpper(text);
 
   const cedulaMatch =
     /(V|E)\s*[-.]?\s*(\d(?:[\d.\s-]{5,12}\d))/.exec(upper) ??
@@ -43,15 +58,19 @@ export function extractCedulaAutofill(rawText: string): { nombres: string | null
   const cedulaRaw = cedulaMatch ? `${cedulaMatch[1] && cedulaMatch[1].length === 1 ? cedulaMatch[1] : 'V'}${cedulaMatch[2] ?? cedulaMatch[1]}` : null;
   const cedula = cedulaRaw ? normalizeId(cedulaRaw) : null;
 
-  const apellidosLabel = /A\w{0,3}PELL?IDOS?\s+([A-ZÁÉÍÓÚÑ\s]{4,60})/.exec(upper);
-  const nombresLabel = /N\w{0,2}OMB?RES?\s+([A-ZÁÉÍÓÚÑ\s]{4,60})/.exec(upper);
+  const lines = text.split(/\r?\n+/);
+  const normalizedLines = normalized.split(/\r?\n+/);
+  const apellidoIndex = normalizedLines.findIndex((line) => /ELLID/.test(line));
+  const nombreIndex = normalizedLines.findIndex((line) => /NOMB|VOVER|VOWER|VOWERE|N0MB|NOM8/.test(line));
 
-  let apellidos = apellidosLabel ? cleanName(apellidosLabel[1]) : '';
-  let nombres = nombresLabel ? cleanName(nombresLabel[1]) : '';
+  const apellidoLine = apellidoIndex >= 0 ? lines[apellidoIndex] : '';
+  const nombreLine = nombreIndex >= 0 ? lines[nombreIndex] : '';
+
+  let apellidos = apellidoLine ? getValueAfterKeyword(apellidoLine, /A\w*P?E?L?L?I?D?\w*/i) : '';
+  let nombres = nombreLine ? getValueAfterKeyword(nombreLine, /N\w*O?M?B?R?\w*|VOW?ER\w*|N0MB\w*|NOM8\w*/i) : '';
 
   // Caso típico en cédulas OCR: "APELLIDOS xxxx | NOMBRES yyyy"
   if (!nombres || !apellidos) {
-    const lines = text.split(/\r?\n+/);
     const labeledLines = lines.filter((line) => /APELL|NOMB|PELLID|NOMBR|VOVER|VOBER|NOM8|N0MB/i.test(line));
     for (const line of labeledLines) {
       const normalizedLine = normalizeUpper(line);
@@ -67,14 +86,14 @@ export function extractCedulaAutofill(rawText: string): { nombres: string | null
         else if (isLikelyNameText(left)) apellidos = left;
       }
 
-      if (!nombres && /NOMB|NOMBR|VOVER|VOBER|N0MB/i.test(normalizedLine)) {
-        const fromLeft = cleanName(leftRaw.replace(/.*(NOMB\w*|VOVER\w*|VOBER\w*)/i, ''));
+      if (!nombres && /NOMB|NOMBR|VOVER|VOBER|N0MB|NOM8/i.test(normalizedLine)) {
+        const fromLeft = cleanName(leftRaw.replace(/.*(N\w{0,4}OMB\w*|VOW?ER\w*|N0MB\w*|NOM8\w*)/i, ''));
         if (isLikelyNameText(fromLeft)) nombres = fromLeft;
         else if (isLikelyNameText(left)) nombres = left;
       }
 
       if (!nombres && isLikelyNameText(right)) nombres = right;
-      if (!apellidos && isLikelyNameText(left) && left.split(' ').length <= 3) apellidos = left;
+      if (!apellidos && isLikelyNameText(left) && left.split(' ').length <= 3 && !/EXPEDICION|VENCIMIENTO/i.test(left)) apellidos = left;
     }
   }
 
@@ -99,9 +118,12 @@ export function extractCedulaAutofill(rawText: string): { nombres: string | null
     apellidos = swap;
   }
 
+  const cleanedNames = cleanPersonValue(nombres);
+  const cleanedSurnames = cleanPersonValue(apellidos);
+
   return {
-    nombres: cleanName(nombres) || null,
-    apellidos: cleanName(apellidos) || null,
+    nombres: cleanedNames || null,
+    apellidos: cleanedSurnames || null,
     cedula
   };
 }
