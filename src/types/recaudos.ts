@@ -40,4 +40,6 @@ export type CommerceImageItem = {
   analyzing?: boolean;
   analysis?: CommerceImageAnalysis;
   analysisError?: string;
+  validationStatus?: 'VALIDO' | 'REVISAR';
+  validationMessage?: string;
 };

@@ -12,6 +12,7 @@ type ModuleType = 'natural' | 'juridica';
 const isImagesComplete = (items: CommerceImageItem[]): boolean => items.length === 3 && items.every((item) => Boolean(item.file));
 const isImagesAnalyzed = (items: CommerceImageItem[]): boolean =>
   items.length === 3 && items.every((item) => Boolean(item.file) && !item.analyzing && Boolean(item.analysis));
+const isImagesValid = (items: CommerceImageItem[]): boolean => items.length === 3 && items.every((item) => item.validationStatus === 'VALIDO');
 const hasUploaded = (items: UploadedDocumentResult[]): boolean => items.length > 0;
 const buildRegistro = (): string => `EXP-${Date.now().toString().slice(-8)}`;
 const splitFullName = (value: string): { nombres: string; apellidos: string } => {
@@ -114,7 +115,10 @@ export default function Recaudos() {
     () => hasUploaded(naturalCedula) && hasUploaded(naturalRif) && naturalSelfie && naturalDataReady,
     [naturalCedula, naturalDataReady, naturalRif, naturalSelfie]
   );
-  const naturalStep2Ready = useMemo(() => isImagesComplete(naturalImages) && isImagesAnalyzed(naturalImages), [naturalImages]);
+  const naturalStep2Ready = useMemo(
+    () => isImagesComplete(naturalImages) && isImagesAnalyzed(naturalImages) && isImagesValid(naturalImages),
+    [naturalImages]
+  );
 
   const juridicaDataReady = useMemo(
     () =>
@@ -139,7 +143,10 @@ export default function Recaudos() {
       juridicaDataReady,
     [juridicaActaRegistro, juridicaDataReady, juridicaRepresentantes, juridicaRif, juridicaSelfie]
   );
-  const juridicaStep2Ready = useMemo(() => isImagesComplete(juridicaImages) && isImagesAnalyzed(juridicaImages), [juridicaImages]);
+  const juridicaStep2Ready = useMemo(
+    () => isImagesComplete(juridicaImages) && isImagesAnalyzed(juridicaImages) && isImagesValid(juridicaImages),
+    [juridicaImages]
+  );
   const navButtonClass = '!border-white !bg-white !text-ubii-blue';
   const missingInputClass = 'border-red-400 ring-1 ring-red-200';
 
@@ -377,7 +384,7 @@ export default function Recaudos() {
           <div className={naturalStep === 2 ? 'space-y-4' : 'hidden'}>
             {naturalStep2Tried && !naturalStep2Ready ? (
               <div className="rounded-xl border border-red-300 bg-red-100 px-4 py-2 text-sm text-red-700">
-                Faltan datos por completar. Verifica que las 3 imágenes estén cargadas y analizadas.
+                Faltan datos por completar. Verifica que las 3 imágenes estén cargadas, analizadas y validadas.
               </div>
             ) : null}
             <CommerceImages onChange={setNaturalImages} highlightMissing={naturalStep2Tried && !naturalStep2Ready} />
@@ -556,7 +563,7 @@ export default function Recaudos() {
           <div className={juridicaStep === 2 ? 'space-y-4' : 'hidden'}>
             {juridicaStep2Tried && !juridicaStep2Ready ? (
               <div className="rounded-xl border border-red-300 bg-red-100 px-4 py-2 text-sm text-red-700">
-                Faltan datos por completar. Verifica que las 3 imágenes estén cargadas y analizadas.
+                Faltan datos por completar. Verifica que las 3 imágenes estén cargadas, analizadas y validadas.
               </div>
             ) : null}
             <CommerceImages onChange={setJuridicaImages} highlightMissing={juridicaStep2Tried && !juridicaStep2Ready} />

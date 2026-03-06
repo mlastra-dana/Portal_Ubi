@@ -70,7 +70,9 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
           error: undefined,
           analyzing: true,
           analysis: undefined,
-          analysisError: undefined
+          analysisError: undefined,
+          validationStatus: undefined,
+          validationMessage: undefined
         };
       });
       onChange?.(next);
@@ -85,7 +87,16 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
       setItems((prev) => {
         const next = prev.map((item) => {
           if (item.kind !== kind || item.previewUrl !== expectedPreviewUrl) return item;
-          return { ...item, analyzing: false, analysis, analysisError: undefined };
+          const isValid = analysis.expectedTypeProbability >= 90;
+          const validationStatus: 'VALIDO' | 'REVISAR' = isValid ? 'VALIDO' : 'REVISAR';
+          return {
+            ...item,
+            analyzing: false,
+            analysis,
+            analysisError: undefined,
+            validationStatus,
+            validationMessage: isValid ? 'Imagen válida para el tipo solicitado.' : `Esta imagen no corresponde a ${item.label.toLowerCase()}.`
+          };
         });
         onChange?.(next);
         return next;
@@ -94,7 +105,13 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
       setItems((prev) => {
         const next = prev.map((item) => {
           if (item.kind !== kind || item.previewUrl !== expectedPreviewUrl) return item;
-          return { ...item, analyzing: false, analysisError: 'No se pudo analizar la imagen.' };
+          return {
+            ...item,
+            analyzing: false,
+            analysisError: 'No se pudo analizar la imagen.',
+            validationStatus: 'REVISAR' as const,
+            validationMessage: `Esta imagen no corresponde a ${item.label.toLowerCase()}.`
+          };
         });
         onChange?.(next);
         return next;
@@ -107,7 +124,18 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
       const next = prev.map((item) => {
         if (item.kind !== kind) return item;
         if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-        return { ...item, blob: undefined, file: undefined, previewUrl: undefined, error: undefined };
+        return {
+          ...item,
+          blob: undefined,
+          file: undefined,
+          previewUrl: undefined,
+          error: undefined,
+          analyzing: false,
+          analysis: undefined,
+          analysisError: undefined,
+          validationStatus: undefined,
+          validationMessage: undefined
+        };
       });
       onChange?.(next);
       return next;
@@ -130,6 +158,7 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
   };
 
   const allRequiredPresent = items.every((item) => Boolean(item.file));
+  const allValidated = items.every((item) => item.validationStatus === 'VALIDO');
 
   return (
     <section
@@ -139,8 +168,12 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
     >
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-ubii-black">Imagenes del comercio *</h3>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${allRequiredPresent ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}`}>
-          {allRequiredPresent ? 'Completado' : 'Pendiente'}
+        <span
+          className={`rounded-full px-3 py-1 text-xs font-semibold ${
+            !allRequiredPresent ? 'bg-gray-100 text-gray-700' : allValidated ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'
+          }`}
+        >
+          {!allRequiredPresent ? 'Pendiente' : allValidated ? 'Validado' : 'Revisar'}
         </span>
       </div>
 
@@ -231,6 +264,9 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
                     {warning}
                   </AlertBanner>
                 ))}
+                {item.validationMessage ? (
+                  <AlertBanner type={item.validationStatus === 'VALIDO' ? 'success' : 'error'}>{item.validationMessage}</AlertBanner>
+                ) : null}
               </div>
             ) : null}
 
