@@ -87,7 +87,7 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
       setItems((prev) => {
         const next = prev.map((item) => {
           if (item.kind !== kind || item.previewUrl !== expectedPreviewUrl) return item;
-          const isValid = analysis.expectedTypeProbability >= 90;
+          const isValid = analysis.expectedTypeProbability >= 75;
           const validationStatus: 'VALIDO' | 'REVISAR' = isValid ? 'VALIDO' : 'REVISAR';
           return {
             ...item,

@@ -17,11 +17,29 @@ const descriptions: Record<ImageKind, string[]> = {
   inventario: ['Estanterias con productos almacenados', 'Area de inventario con mercancia organizada']
 };
 
+const fallbackDescriptionByKind: Record<ImageKind, string> = {
+  fachada: 'Fachada del comercio capturada.',
+  interior: 'Interior del comercio capturado.',
+  inventario: 'Área de inventario capturada.'
+};
+
+const peopleWarningByKind: Record<ImageKind, string> = {
+  fachada: 'Fachada con personas detectadas; debe tomarse sin personas',
+  interior: 'Interior con personas detectadas; debe tomarse sin personas',
+  inventario: 'Inventario con personas detectadas; debe tomarse sin personas'
+};
+
 const genericSceneDescriptions = [
   'Persona en primer plano en ambiente no comercial',
   'Escena interior sin evidencia clara de comercio',
   'Imagen de uso personal sin contexto de local',
   'Espacio general sin elementos suficientes del tipo solicitado'
+];
+
+const facadeWithPeopleDescriptions = [
+  'Fachada del comercio visible, con personas en primer plano',
+  'Frente del local identificado, aunque hay personas tapando parte de la entrada',
+  'Vista de fachada comercial con presencia de personas en la escena'
 ];
 
 const qualityFromSize = (size: number): number => {
@@ -56,19 +74,27 @@ export const analyzeImage = async (blob: Blob, kind: ImageKind): Promise<ImageAn
   const variation = (hash % 11) - 5;
   const faceCount = await detectFaces(blob);
 
-  const expectedTypeBase = qualityScore + 6 + variation;
-  const expectedTypeProbability = clamp(faceCount > 0 ? expectedTypeBase - 42 : expectedTypeBase, 10, 99);
+  const expectedTypeBase = qualityScore + 10 + variation + (kind === 'fachada' ? 4 : 0);
+  let expectedTypeProbability = clamp(faceCount > 0 ? expectedTypeBase - 42 : expectedTypeBase, 10, 99);
   const aiGeneratedProbability = clamp(((hash >> 3) % 55) + (qualityScore < 75 ? 18 : 4), 0, 95);
 
   const warnings: string[] = [];
-  if (expectedTypeProbability < 90) warnings.push('Probabilidad baja de que sea la foto solicitada');
+  if (expectedTypeProbability < 75) warnings.push('Probabilidad baja de que sea la foto solicitada');
   if (aiGeneratedProbability > 60) warnings.push('Posible imagen generada por IA');
   if (qualityScore < 70) warnings.push('Calidad de imagen baja, considera repetir la captura');
-  if (faceCount > 0) warnings.push('Se detecta persona en primer plano; no parece evidencia del comercio');
+  if (faceCount > 0) {
+    warnings.push(peopleWarningByKind[kind]);
+    expectedTypeProbability = clamp(expectedTypeProbability - 30 - (kind === 'fachada' ? 10 : 0), 10, 99);
+  }
+
+  const descriptionPool =
+    faceCount > 0 ? (kind === 'fachada' ? facadeWithPeopleDescriptions : genericSceneDescriptions) : descriptions[kind];
+  const description =
+    descriptionPool[descriptionPool.length ? hash % descriptionPool.length : 0] ?? fallbackDescriptionByKind[kind];
 
   return {
     kind,
-    description: faceCount > 0 ? genericSceneDescriptions[hash % genericSceneDescriptions.length] : descriptions[kind][hash % descriptions[kind].length],
+    description,
     expectedTypeProbability,
     aiGeneratedProbability,
     warnings

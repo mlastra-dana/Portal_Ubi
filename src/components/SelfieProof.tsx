@@ -5,9 +5,10 @@ type Props = {
   label?: string;
   onChange?: (payload?: { file: File; previewUrl: string }) => void;
   className?: string;
+  highlightMissing?: boolean;
 };
 
-export function SelfieProof({ label = 'Prueba de vida (selfie)', onChange, className = '' }: Props) {
+export function SelfieProof({ label = 'Prueba de vida (selfie)', onChange, className = '', highlightMissing = false }: Props) {
   const [previewUrl, setPreviewUrl] = useState<string>();
   const [cameraOpen, setCameraOpen] = useState(false);
   const [error, setError] = useState('');
@@ -75,7 +76,9 @@ export function SelfieProof({ label = 'Prueba de vida (selfie)', onChange, class
   };
 
   return (
-    <section className={`h-fit space-y-3 rounded-xl border border-ubii-border bg-white p-6 shadow-soft ${className}`}>
+    <section
+      className={`h-fit space-y-3 rounded-xl border bg-white p-6 shadow-soft ${highlightMissing ? 'border-red-400 ring-1 ring-red-200' : 'border-ubii-border'} ${className}`}
+    >
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-ubii-black">{label} *</h3>
         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${previewUrl ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}`}>

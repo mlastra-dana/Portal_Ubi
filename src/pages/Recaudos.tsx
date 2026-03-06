@@ -160,6 +160,21 @@ export default function Recaudos() {
     telefono: !naturalTelefono.trim(),
     correo: !naturalCorreo.trim()
   };
+  const naturalMissingFieldsStep1: string[] = [
+    ...(naturalMissing.cedula ? ['Cédula de identidad'] : []),
+    ...(naturalMissing.rif ? ['RIF'] : []),
+    ...(naturalMissing.selfie ? ['Prueba de vida (selfie)'] : []),
+    ...(naturalMissing.nombres ? ['Nombres'] : []),
+    ...(naturalMissing.apellidos ? ['Apellidos'] : []),
+    ...(naturalMissing.cedulaId ? ['Cédula de identidad (número)'] : []),
+    ...(naturalMissing.telefono ? ['Número de teléfono'] : []),
+    ...(naturalMissing.correo ? ['Correo'] : [])
+  ];
+  const naturalMissingFieldsStep2: string[] = [
+    ...(!isImagesComplete(naturalImages) ? ['Imágenes del comercio (faltan adjuntos)'] : []),
+    ...(!isImagesAnalyzed(naturalImages) ? ['Imágenes del comercio (faltan análisis)'] : []),
+    ...(!isImagesValid(naturalImages) ? ['Imágenes del comercio (falta validación)'] : [])
+  ];
 
   const juridicaMissing = {
     representantes: !hasUploaded(juridicaRepresentantes),
@@ -174,6 +189,24 @@ export default function Recaudos() {
     repTelefono: !repTelefono.trim(),
     repCorreo: !repCorreo.trim()
   };
+  const juridicaMissingFieldsStep1: string[] = [
+    ...(juridicaMissing.rif ? ['RIF'] : []),
+    ...(juridicaMissing.actaRegistro ? ['Registro mercantil'] : []),
+    ...(juridicaMissing.representantes ? ['Cédula del representante'] : []),
+    ...(juridicaMissing.selfie ? ['Prueba de vida (selfie del representante)'] : []),
+    ...(juridicaMissing.razonSocial ? ['Razón social'] : []),
+    ...(juridicaMissing.rifEmpresa ? ['RIF de la empresa'] : []),
+    ...(juridicaMissing.repNombres ? ['Nombres del representante'] : []),
+    ...(juridicaMissing.repApellidos ? ['Apellidos del representante'] : []),
+    ...(juridicaMissing.repCedula ? ['Cédula del representante (número)'] : []),
+    ...(juridicaMissing.repTelefono ? ['Número de teléfono del representante'] : []),
+    ...(juridicaMissing.repCorreo ? ['Correo del representante'] : [])
+  ];
+  const juridicaMissingFieldsStep2: string[] = [
+    ...(!isImagesComplete(juridicaImages) ? ['Imágenes del comercio (faltan adjuntos)'] : []),
+    ...(!isImagesAnalyzed(juridicaImages) ? ['Imágenes del comercio (faltan análisis)'] : []),
+    ...(!isImagesValid(juridicaImages) ? ['Imágenes del comercio (falta validación)'] : [])
+  ];
 
   const handleNaturalStep1Continue = () => {
     if (!naturalStep1Ready) {
@@ -297,7 +330,9 @@ export default function Recaudos() {
               />
             </div>
             {naturalStep1Tried && !naturalStep1Ready ? (
-              <div className="rounded-xl border border-red-300 bg-red-100 px-4 py-2 text-sm text-red-700">Faltan datos por completar.</div>
+              <div className="rounded-xl border border-red-300 bg-red-100 px-4 py-2 text-sm text-red-700">
+                Faltan datos por completar: {naturalMissingFieldsStep1.join(', ')}.
+              </div>
             ) : null}
 
             <div className="grid gap-4 lg:grid-cols-3">
@@ -362,8 +397,9 @@ export default function Recaudos() {
                 </div>
               </section>
               <SelfieProof
-                className={`self-start ${naturalStep1Tried && naturalMissing.selfie ? 'border-red-400 ring-1 ring-red-200' : ''}`}
+                className="self-start"
                 label="Prueba de vida (selfie)"
+                highlightMissing={naturalStep1Tried && naturalMissing.selfie}
                 onChange={(payload) => setNaturalSelfie(Boolean(payload?.file))}
               />
             </div>
@@ -384,7 +420,7 @@ export default function Recaudos() {
           <div className={naturalStep === 2 ? 'space-y-4' : 'hidden'}>
             {naturalStep2Tried && !naturalStep2Ready ? (
               <div className="rounded-xl border border-red-300 bg-red-100 px-4 py-2 text-sm text-red-700">
-                Faltan datos por completar. Verifica que las 3 imágenes estén cargadas, analizadas y validadas.
+                Faltan datos por completar: {naturalMissingFieldsStep2.join(', ')}.
               </div>
             ) : null}
             <CommerceImages onChange={setNaturalImages} highlightMissing={naturalStep2Tried && !naturalStep2Ready} />
@@ -434,7 +470,9 @@ export default function Recaudos() {
               />
             </div>
             {juridicaStep1Tried && !juridicaStep1Ready ? (
-              <div className="rounded-xl border border-red-300 bg-red-100 px-4 py-2 text-sm text-red-700">Faltan datos por completar.</div>
+              <div className="rounded-xl border border-red-300 bg-red-100 px-4 py-2 text-sm text-red-700">
+                Faltan datos por completar: {juridicaMissingFieldsStep1.join(', ')}.
+              </div>
             ) : null}
 
             <div className="grid gap-4 lg:grid-cols-3">
@@ -541,8 +579,9 @@ export default function Recaudos() {
               </div>
 
               <SelfieProof
-                className={`self-start ${juridicaStep1Tried && juridicaMissing.selfie ? 'border-red-400 ring-1 ring-red-200' : ''}`}
+                className="self-start"
                 label="Prueba de vida (selfie del representante)"
+                highlightMissing={juridicaStep1Tried && juridicaMissing.selfie}
                 onChange={(payload) => setJuridicaSelfie(Boolean(payload?.file))}
               />
             </div>
@@ -563,7 +602,7 @@ export default function Recaudos() {
           <div className={juridicaStep === 2 ? 'space-y-4' : 'hidden'}>
             {juridicaStep2Tried && !juridicaStep2Ready ? (
               <div className="rounded-xl border border-red-300 bg-red-100 px-4 py-2 text-sm text-red-700">
-                Faltan datos por completar. Verifica que las 3 imágenes estén cargadas, analizadas y validadas.
+                Faltan datos por completar: {juridicaMissingFieldsStep2.join(', ')}.
               </div>
             ) : null}
             <CommerceImages onChange={setJuridicaImages} highlightMissing={juridicaStep2Tried && !juridicaStep2Ready} />
