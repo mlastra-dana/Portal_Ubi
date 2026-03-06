@@ -236,24 +236,13 @@ export default function Recaudos() {
 
               <DocumentSlot label="Registro mercantil" required docKind="ACTA_REGISTRO" onChange={setJuridicaActaRegistro} />
 
-              <section className="space-y-4 rounded-xl border border-ubii-border bg-white p-6 shadow-soft">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-ubii-black">Representantes legales</h3>
-                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${hasUploaded(juridicaRepresentantes) ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}`}>
-                    {hasUploaded(juridicaRepresentantes) ? 'Cargado' : 'Pendiente'}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-600">Cargue la cédula del representante principal.</p>
-
-                <div className="border-t border-ubii-border pt-4">
-                  <DocumentSlot
-                    label="Cédula del Representante (Obligatorio)"
-                    required
-                    docKind="CEDULA_REPRESENTANTE"
-                    onChange={setJuridicaRepresentantes}
-                  />
-                </div>
-              </section>
+              <DocumentSlot
+                label="Cédula del representante"
+                required
+                description="Cargue la cédula del representante principal."
+                docKind="CEDULA_REPRESENTANTE"
+                onChange={setJuridicaRepresentantes}
+              />
             </div>
 
             <div className="space-y-4">
