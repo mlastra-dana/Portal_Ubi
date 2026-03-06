@@ -23,6 +23,13 @@ export type UploadedDocumentResult = {
 
 export type CommerceImageKind = 'fachada' | 'interior' | 'inventario';
 
+export type CommerceImageAnalysis = {
+  description: string;
+  expectedTypeProbability: number;
+  aiGeneratedProbability: number;
+  warnings: string[];
+};
+
 export type CommerceImageItem = {
   kind: CommerceImageKind;
   label: string;
@@ -30,4 +37,7 @@ export type CommerceImageItem = {
   blob?: Blob;
   previewUrl?: string;
   error?: string;
+  analyzing?: boolean;
+  analysis?: CommerceImageAnalysis;
+  analysisError?: string;
 };

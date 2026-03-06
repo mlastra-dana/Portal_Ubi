@@ -12,6 +12,7 @@ type Props = {
   docKind: DocKind;
   description?: string;
   onChange?: (results: UploadedDocumentResult[]) => void;
+  className?: string;
 };
 
 const ACCEPT = '.pdf,image/png,image/jpeg,image/jpg';
@@ -108,7 +109,7 @@ const getValidationAlertType = (status?: 'VALIDO' | 'REVISAR', message?: string)
   return 'warning';
 };
 
-export function DocumentSlot({ label, required = false, multiple = false, docKind, description, onChange }: Props) {
+export function DocumentSlot({ label, required = false, multiple = false, docKind, description, onChange, className = '' }: Props) {
   const [results, setResults] = useState<UploadedDocumentResult[]>([]);
   const inputId = useId();
 
@@ -198,7 +199,7 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
     return 'VALIDADO' as const;
   }, [results]);
   return (
-    <section className="space-y-3 rounded-xl border border-ubii-border bg-white p-6 shadow-soft">
+    <section className={`space-y-3 rounded-xl border border-ubii-border bg-white p-6 shadow-soft ${className}`}>
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-ubii-black">
           {label} {required ? <span className="text-red-600">*</span> : null}
