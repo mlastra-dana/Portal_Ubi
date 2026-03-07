@@ -13,6 +13,8 @@ const isImagesComplete = (items: CommerceImageItem[]): boolean => items.length =
 const isImagesAnalyzed = (items: CommerceImageItem[]): boolean =>
   items.length === 3 && items.every((item) => Boolean(item.file) && !item.analyzing && Boolean(item.analysis));
 const isImagesValid = (items: CommerceImageItem[]): boolean => items.length === 3 && items.every((item) => item.validationStatus === 'VALIDO');
+const hasImagesNoCoincide = (items: CommerceImageItem[]): boolean =>
+  items.some((item) => item.analysis?.validationResult === 'NO COINCIDE');
 const hasUploaded = (items: UploadedDocumentResult[]): boolean => items.length > 0;
 const buildRegistro = (): string => `EXP-${Date.now().toString().slice(-8)}`;
 const splitFullName = (value: string): { nombres: string; apellidos: string } => {
@@ -115,9 +117,10 @@ export default function Recaudos() {
     () => hasUploaded(naturalCedula) && hasUploaded(naturalRif) && naturalSelfie && naturalDataReady,
     [naturalCedula, naturalDataReady, naturalRif, naturalSelfie]
   );
+  const naturalHasNoCoincide = useMemo(() => hasImagesNoCoincide(naturalImages), [naturalImages]);
   const naturalStep2Ready = useMemo(
-    () => isImagesComplete(naturalImages) && isImagesAnalyzed(naturalImages) && isImagesValid(naturalImages),
-    [naturalImages]
+    () => isImagesComplete(naturalImages) && isImagesAnalyzed(naturalImages) && isImagesValid(naturalImages) && !naturalHasNoCoincide,
+    [naturalHasNoCoincide, naturalImages]
   );
 
   const juridicaDataReady = useMemo(
@@ -143,9 +146,10 @@ export default function Recaudos() {
       juridicaDataReady,
     [juridicaActaRegistro, juridicaDataReady, juridicaRepresentantes, juridicaRif, juridicaSelfie]
   );
+  const juridicaHasNoCoincide = useMemo(() => hasImagesNoCoincide(juridicaImages), [juridicaImages]);
   const juridicaStep2Ready = useMemo(
-    () => isImagesComplete(juridicaImages) && isImagesAnalyzed(juridicaImages) && isImagesValid(juridicaImages),
-    [juridicaImages]
+    () => isImagesComplete(juridicaImages) && isImagesAnalyzed(juridicaImages) && isImagesValid(juridicaImages) && !juridicaHasNoCoincide,
+    [juridicaHasNoCoincide, juridicaImages]
   );
   const navButtonClass = '!border-white !bg-white !text-ubii-blue';
   const missingInputClass = 'border-red-400 ring-1 ring-red-200';
@@ -173,7 +177,8 @@ export default function Recaudos() {
   const naturalMissingFieldsStep2: string[] = [
     ...(!isImagesComplete(naturalImages) ? ['Imágenes del comercio (faltan adjuntos)'] : []),
     ...(!isImagesAnalyzed(naturalImages) ? ['Imágenes del comercio (faltan análisis)'] : []),
-    ...(!isImagesValid(naturalImages) ? ['Imágenes del comercio (falta validación)'] : [])
+    ...(!isImagesValid(naturalImages) ? ['Imágenes del comercio (falta validación)'] : []),
+    ...(naturalHasNoCoincide ? ["Imágenes del comercio con estado 'No coincide'"] : [])
   ];
 
   const juridicaMissing = {
@@ -205,7 +210,8 @@ export default function Recaudos() {
   const juridicaMissingFieldsStep2: string[] = [
     ...(!isImagesComplete(juridicaImages) ? ['Imágenes del comercio (faltan adjuntos)'] : []),
     ...(!isImagesAnalyzed(juridicaImages) ? ['Imágenes del comercio (faltan análisis)'] : []),
-    ...(!isImagesValid(juridicaImages) ? ['Imágenes del comercio (falta validación)'] : [])
+    ...(!isImagesValid(juridicaImages) ? ['Imágenes del comercio (falta validación)'] : []),
+    ...(juridicaHasNoCoincide ? ["Imágenes del comercio con estado 'No coincide'"] : [])
   ];
 
   const handleNaturalStep1Continue = () => {
@@ -423,12 +429,25 @@ export default function Recaudos() {
                 Faltan datos por completar: {naturalMissingFieldsStep2.join(', ')}.
               </div>
             ) : null}
-            <CommerceImages onChange={setNaturalImages} highlightMissing={naturalStep2Tried && !naturalStep2Ready} />
+            <CommerceImages
+              onChange={setNaturalImages}
+              highlightMissing={naturalStep2Tried && !naturalStep2Ready}
+              highlightNoMatch={naturalHasNoCoincide}
+            />
+            {naturalHasNoCoincide ? (
+              <div className="rounded-xl border border-red-300 bg-red-100 px-4 py-2 text-sm text-red-700">
+                Debes corregir las imágenes marcadas como 'No coincide' antes de enviar el expediente.
+              </div>
+            ) : null}
             <div className="flex items-center justify-between gap-3">
               <PrimaryButton className={navButtonClass} onClick={() => setNaturalStep(1)}>
                 Volver
               </PrimaryButton>
-              <PrimaryButton className={`${navButtonClass} ${naturalStep2Ready ? '' : 'opacity-60'}`} onClick={handleNaturalStep2Continue}>
+              <PrimaryButton
+                className={`${navButtonClass} ${naturalStep2Ready ? '' : 'opacity-60'}`}
+                onClick={handleNaturalStep2Continue}
+                disabled={!naturalStep2Ready}
+              >
                 Enviar expediente
               </PrimaryButton>
             </div>
@@ -605,12 +624,25 @@ export default function Recaudos() {
                 Faltan datos por completar: {juridicaMissingFieldsStep2.join(', ')}.
               </div>
             ) : null}
-            <CommerceImages onChange={setJuridicaImages} highlightMissing={juridicaStep2Tried && !juridicaStep2Ready} />
+            <CommerceImages
+              onChange={setJuridicaImages}
+              highlightMissing={juridicaStep2Tried && !juridicaStep2Ready}
+              highlightNoMatch={juridicaHasNoCoincide}
+            />
+            {juridicaHasNoCoincide ? (
+              <div className="rounded-xl border border-red-300 bg-red-100 px-4 py-2 text-sm text-red-700">
+                Debes corregir las imágenes marcadas como 'No coincide' antes de enviar el expediente.
+              </div>
+            ) : null}
             <div className="flex items-center justify-between gap-3">
               <PrimaryButton className={navButtonClass} onClick={() => setJuridicaStep(1)}>
                 Volver
               </PrimaryButton>
-              <PrimaryButton className={`${navButtonClass} ${juridicaStep2Ready ? '' : 'opacity-60'}`} onClick={handleJuridicaStep2Continue}>
+              <PrimaryButton
+                className={`${navButtonClass} ${juridicaStep2Ready ? '' : 'opacity-60'}`}
+                onClick={handleJuridicaStep2Continue}
+                disabled={!juridicaStep2Ready}
+              >
                 Enviar expediente
               </PrimaryButton>
             </div>

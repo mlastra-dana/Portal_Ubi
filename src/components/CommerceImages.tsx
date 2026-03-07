@@ -9,6 +9,7 @@ import type { RequestedBusinessCategory } from '../services/imageValidation/type
 type Props = {
   onChange?: (items: CommerceImageItem[]) => void;
   highlightMissing?: boolean;
+  highlightNoMatch?: boolean;
   className?: string;
 };
 
@@ -38,7 +39,7 @@ const slotHelpTextByKind: Record<CommerceImageKind, string> = {
   inventario: 'Debe mostrar productos, mercancía o stock del negocio'
 };
 
-export function CommerceImages({ onChange, highlightMissing = false, className = '' }: Props) {
+export function CommerceImages({ onChange, highlightMissing = false, highlightNoMatch = false, className = '' }: Props) {
   const [items, setItems] = useState<CommerceImageItem[]>(initialItems);
   const [activeCamera, setActiveCamera] = useState<CommerceImageKind | null>(null);
   const [cameraError, setCameraError] = useState<string>('');
@@ -221,7 +222,11 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
           <article
             key={item.kind}
             className={`space-y-4 rounded-2xl border bg-[#F5F9FD] p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-              highlightMissing && !item.file ? 'border-red-400 ring-1 ring-red-200' : 'border-ubii-border'
+              highlightMissing && !item.file
+                ? 'border-red-400 ring-1 ring-red-200'
+                : highlightNoMatch && item.analysis?.validationResult === 'NO COINCIDE'
+                ? 'border-red-400 ring-1 ring-red-200'
+                : 'border-ubii-border'
             }`}
           >
             <div className="space-y-1">
