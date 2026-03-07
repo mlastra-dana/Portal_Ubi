@@ -35,7 +35,7 @@ const mismatchMessageByKind: Record<CommerceImageKind, string> = {
 const slotHelpTextByKind: Record<CommerceImageKind, string> = {
   fachada: 'Debe mostrar la parte exterior del comercio',
   interior: 'Debe mostrar el espacio interno del negocio',
-  inventario: 'Debe mostrar productos, mercancia o stock del negocio'
+  inventario: 'Debe mostrar productos, mercancía o stock del negocio'
 };
 
 export function CommerceImages({ onChange, highlightMissing = false, className = '' }: Props) {
@@ -201,12 +201,12 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
 
   return (
     <section
-      className={`space-y-3 rounded-xl border bg-white p-6 shadow-soft ${
+      className={`space-y-5 rounded-2xl border bg-white p-6 shadow-soft ${
         highlightMissing ? 'border-red-400 ring-1 ring-red-200' : 'border-ubii-border'
       } ${className}`}
     >
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-ubii-black">Imagenes del comercio *</h3>
+        <h3 className="text-xl font-semibold text-[#111111]">Imágenes del comercio *</h3>
         <span
           className={`rounded-full px-3 py-1 text-xs font-semibold ${
             !allRequiredPresent ? 'bg-gray-100 text-gray-700' : allLooksGood ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'
@@ -216,21 +216,26 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
         </span>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-5 lg:grid-cols-3">
         {items.map((item) => (
           <article
             key={item.kind}
-            className={`space-y-2 rounded-xl border bg-ubii-light p-4 ${
+            className={`space-y-4 rounded-2xl border bg-[#F5F9FD] p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
               highlightMissing && !item.file ? 'border-red-400 ring-1 ring-red-200' : 'border-ubii-border'
             }`}
           >
-            <p className="text-sm font-semibold text-ubii-black">{item.label}</p>
-            <p className="text-xs text-gray-600">{slotHelpTextByKind[item.kind]}</p>
+            <div className="space-y-1">
+              <p className="text-lg font-semibold text-[#111111]">{item.label}</p>
+              <p className="text-xs text-gray-600">{slotHelpTextByKind[item.kind]}</p>
+            </div>
             <div className="flex flex-wrap gap-2">
-              <PrimaryButton className="px-3 py-2 text-xs" onClick={() => startCamera(item.kind)}>
+              <PrimaryButton
+                className="!h-10 !rounded-xl !border-[#4B98CB] !bg-[#4B98CB] !px-4 !py-2 !text-xs hover:!border-[#3E86B6] hover:!bg-[#3E86B6]"
+                onClick={() => startCamera(item.kind)}
+              >
                 Tomar foto
               </PrimaryButton>
-              <label className="inline-flex cursor-pointer items-center rounded-lg border border-ubii-border bg-white px-3 py-2 text-xs font-semibold text-ubii-black">
+              <label className="inline-flex h-10 cursor-pointer items-center rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-[#111111] transition hover:border-[#4B98CB]">
                 Subir archivo
                 <input
                   type="file"
@@ -244,33 +249,28 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
                   }}
                 />
               </label>
-              {item.previewUrl ? (
-                <button
-                  type="button"
-                  onClick={() => clearItem(item.kind)}
-                  className="inline-flex items-center rounded-lg border border-ubii-border bg-white px-3 py-2 text-xs font-semibold text-gray-700"
-                  aria-label={`Eliminar ${item.label}`}
-                  title="Eliminar adjunto"
-                >
-                  Eliminar imagen
-                </button>
-              ) : null}
             </div>
             {activeCamera === item.kind ? (
-              <div className="space-y-2 rounded-xl border border-ubii-border bg-white p-3">
-                <p className="text-xs font-semibold text-ubii-black">Cámara activa</p>
+              <div className="space-y-3 rounded-xl border border-ubii-border bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Cámara activa</p>
                 <video
                   ref={videoRef}
                   autoPlay
                   playsInline
                   muted
-                  className="mx-auto w-full max-w-xs rounded-xl bg-black object-cover aspect-[3/4]"
+                  className="mx-auto aspect-[3/4] w-full max-w-xs rounded-xl bg-black object-cover"
                 />
                 <div className="flex gap-2">
-                  <PrimaryButton className="px-3 py-2 text-sm" onClick={() => void capturePhoto(activeCamera)}>
+                  <PrimaryButton
+                    className="!h-10 !rounded-xl !border-[#4B98CB] !bg-[#4B98CB] !px-4 !py-2 !text-sm hover:!border-[#3E86B6] hover:!bg-[#3E86B6]"
+                    onClick={() => void capturePhoto(activeCamera)}
+                  >
                     Capturar
                   </PrimaryButton>
-                  <PrimaryButton className="px-3 py-2 text-sm" onClick={stopCamera}>
+                  <PrimaryButton
+                    className="!h-10 !rounded-xl !border-gray-300 !bg-white !px-4 !py-2 !text-sm !text-[#111111] hover:!border-[#4B98CB]"
+                    onClick={stopCamera}
+                  >
                     Cancelar
                   </PrimaryButton>
                 </div>
@@ -281,7 +281,7 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
               requestedLabel={item.label}
               analyzing={item.analyzing}
               analysis={item.analysis}
-              validationMessage={item.validationMessage}
+              onRemovePreview={item.previewUrl ? () => clearItem(item.kind) : undefined}
             />
 
             {item.analysisError ? <AlertBanner type="error">{item.analysisError}</AlertBanner> : null}
