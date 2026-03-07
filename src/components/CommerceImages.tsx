@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { PrimaryButton } from './ui/PrimaryButton';
 import { AlertBanner } from './AlertBanner';
-import { analyzeImage } from '../services/imageAiMock';
+import { ImageValidationCard } from './ImageValidationCard';
+import { analyzeBusinessImage } from '../services/imageValidation/imageAnalyzer';
 import type { CommerceImageItem, CommerceImageKind } from '../types/recaudos';
+import type { RequestedBusinessCategory } from '../services/imageValidation/types';
 
 type Props = {
   onChange?: (items: CommerceImageItem[]) => void;
@@ -12,9 +14,29 @@ type Props = {
 
 const initialItems: CommerceImageItem[] = [
   { kind: 'fachada', label: 'Fachada' },
-  { kind: 'interior', label: 'Interior' },
-  { kind: 'inventario', label: 'Inventario' }
+  { kind: 'interior', label: 'Interior de negocio' },
+  { kind: 'inventario', label: 'Inventario de negocio' }
 ];
+
+const buildAnalysisToken = (): string => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const requestedCategoryByKind: Record<CommerceImageKind, RequestedBusinessCategory> = {
+  fachada: 'FACHADA',
+  interior: 'INTERIOR',
+  inventario: 'INVENTARIO'
+};
+
+const mismatchMessageByKind: Record<CommerceImageKind, string> = {
+  fachada: 'La imagen no coincide con una fachada de negocio.',
+  interior: 'La imagen no coincide con un interior de negocio.',
+  inventario: 'La imagen no coincide con un inventario de negocio.'
+};
+
+const slotHelpTextByKind: Record<CommerceImageKind, string> = {
+  fachada: 'Debe mostrar la parte exterior del comercio',
+  interior: 'Debe mostrar el espacio interno del negocio',
+  inventario: 'Debe mostrar productos, mercancia o stock del negocio'
+};
 
 export function CommerceImages({ onChange, highlightMissing = false, className = '' }: Props) {
   const [items, setItems] = useState<CommerceImageItem[]>(initialItems);
@@ -58,12 +80,14 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
   };
 
   const assignItem = (kind: CommerceImageKind, payload: { blob: Blob; file: File; previewUrl: string }) => {
+    const analysisToken = buildAnalysisToken();
     setItems((prev) => {
       const next = prev.map((item) => {
         if (item.kind !== kind) return item;
         if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
         return {
           ...item,
+          analysisToken,
           blob: payload.blob,
           file: payload.file,
           previewUrl: payload.previewUrl,
@@ -78,24 +102,35 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
       onChange?.(next);
       return next;
     });
-    void runAnalysis(kind, payload.blob, payload.previewUrl);
+    void runAnalysis(kind, payload.blob, payload.previewUrl, analysisToken);
   };
 
-  const runAnalysis = async (kind: CommerceImageKind, blob: Blob, expectedPreviewUrl: string) => {
+  const runAnalysis = async (kind: CommerceImageKind, blob: Blob, expectedPreviewUrl: string, analysisToken: string) => {
     try {
-      const analysis = await analyzeImage(blob, kind);
+      const requestedCategory = requestedCategoryByKind[kind];
+      const analysis = await analyzeBusinessImage(blob, requestedCategory);
       setItems((prev) => {
         const next = prev.map((item) => {
-          if (item.kind !== kind || item.previewUrl !== expectedPreviewUrl) return item;
-          const isValid = analysis.expectedTypeProbability >= 75;
-          const validationStatus: 'VALIDO' | 'REVISAR' = isValid ? 'VALIDO' : 'REVISAR';
+          if (item.kind !== kind || item.previewUrl !== expectedPreviewUrl || item.analysisToken !== analysisToken) return item;
+          const validationMessage =
+            analysis.validationResult === 'VALIDADA'
+              ? 'La imagen corresponde con el tipo solicitado.'
+              : analysis.validationResult === 'REVISAR'
+              ? 'No se pudo confirmar con suficiente certeza que la imagen corresponda al tipo solicitado.'
+              : analysis.mismatchReason === 'PERSONA_DETECTADA'
+              ? mismatchMessageByKind[kind]
+              : mismatchMessageByKind[kind];
           return {
             ...item,
             analyzing: false,
-            analysis,
+            analysis: {
+              ...analysis,
+              expectedTypeProbability: analysis.categoryProbability
+            },
             analysisError: undefined,
-            validationStatus,
-            validationMessage: isValid ? 'Imagen válida para el tipo solicitado.' : `Esta imagen no corresponde a ${item.label.toLowerCase()}.`
+            // El flujo no se bloquea por imagen; la revisión se comunica en la tarjeta.
+            validationStatus: 'VALIDO' as const,
+            validationMessage
           };
         });
         onChange?.(next);
@@ -104,7 +139,7 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
     } catch {
       setItems((prev) => {
         const next = prev.map((item) => {
-          if (item.kind !== kind || item.previewUrl !== expectedPreviewUrl) return item;
+          if (item.kind !== kind || item.previewUrl !== expectedPreviewUrl || item.analysisToken !== analysisToken) return item;
           return {
             ...item,
             analyzing: false,
@@ -126,6 +161,7 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
         if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
         return {
           ...item,
+          analysisToken: undefined,
           blob: undefined,
           file: undefined,
           previewUrl: undefined,
@@ -158,7 +194,10 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
   };
 
   const allRequiredPresent = items.every((item) => Boolean(item.file));
-  const allValidated = items.every((item) => item.validationStatus === 'VALIDO');
+  const allLooksGood = items.every((item) => {
+    if (!item.analysis) return false;
+    return item.analysis.validationResult === 'VALIDADA';
+  });
 
   return (
     <section
@@ -170,10 +209,10 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
         <h3 className="text-lg font-semibold text-ubii-black">Imagenes del comercio *</h3>
         <span
           className={`rounded-full px-3 py-1 text-xs font-semibold ${
-            !allRequiredPresent ? 'bg-gray-100 text-gray-700' : allValidated ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'
+            !allRequiredPresent ? 'bg-gray-100 text-gray-700' : allLooksGood ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'
           }`}
         >
-          {!allRequiredPresent ? 'Pendiente' : allValidated ? 'Validado' : 'Revisar'}
+          {!allRequiredPresent ? 'Pendiente' : allLooksGood ? 'Validado' : 'Revisar'}
         </span>
       </div>
 
@@ -186,6 +225,7 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
             }`}
           >
             <p className="text-sm font-semibold text-ubii-black">{item.label}</p>
+            <p className="text-xs text-gray-600">{slotHelpTextByKind[item.kind]}</p>
             <div className="flex flex-wrap gap-2">
               <PrimaryButton className="px-3 py-2 text-xs" onClick={() => startCamera(item.kind)}>
                 Tomar foto
@@ -200,9 +240,21 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
                     const file = event.target.files?.[0];
                     if (!file) return;
                     assignItem(item.kind, { blob: file, file, previewUrl: URL.createObjectURL(file) });
+                    event.currentTarget.value = '';
                   }}
                 />
               </label>
+              {item.previewUrl ? (
+                <button
+                  type="button"
+                  onClick={() => clearItem(item.kind)}
+                  className="inline-flex items-center rounded-lg border border-ubii-border bg-white px-3 py-2 text-xs font-semibold text-gray-700"
+                  aria-label={`Eliminar ${item.label}`}
+                  title="Eliminar adjunto"
+                >
+                  Eliminar imagen
+                </button>
+              ) : null}
             </div>
             {activeCamera === item.kind ? (
               <div className="space-y-2 rounded-xl border border-ubii-border bg-white p-3">
@@ -224,51 +276,13 @@ export function CommerceImages({ onChange, highlightMissing = false, className =
                 </div>
               </div>
             ) : null}
-            {item.previewUrl ? (
-              <div className="relative">
-                <img src={item.previewUrl} alt={`Preview ${item.label}`} className="h-40 w-full rounded-xl object-cover" />
-                <button
-                  type="button"
-                  onClick={() => clearItem(item.kind)}
-                  className="absolute right-2 top-2 rounded-full border border-ubii-border bg-white px-2 py-0.5 text-xs font-bold text-gray-700"
-                  aria-label={`Eliminar ${item.label}`}
-                  title="Eliminar adjunto"
-                >
-                  x
-                </button>
-              </div>
-            ) : null}
-
-            {item.analyzing ? (
-              <div className="rounded-lg border border-ubii-blue/30 bg-white p-3 text-sm text-ubii-black">
-                <p className="flex items-center gap-2 font-semibold">
-                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-ubii-blue border-t-transparent" />
-                  Analizando imagen...
-                </p>
-              </div>
-            ) : null}
-
-            {item.analysis ? (
-              <div className="space-y-2 rounded-lg border border-ubii-border bg-white p-3 text-xs text-ubii-black">
-                <p>
-                  <span className="font-semibold">Descripción IA:</span> {item.analysis.description}
-                </p>
-                <p>
-                  <span className="font-semibold">Tipo esperado:</span> {item.label} ({item.analysis.expectedTypeProbability}%)
-                </p>
-                <p>
-                  <span className="font-semibold">Probabilidad IA-generada:</span> {item.analysis.aiGeneratedProbability}%
-                </p>
-                {item.analysis.warnings.map((warning) => (
-                  <AlertBanner key={`${item.kind}-${warning}`} type="warning">
-                    {warning}
-                  </AlertBanner>
-                ))}
-                {item.validationMessage ? (
-                  <AlertBanner type={item.validationStatus === 'VALIDO' ? 'success' : 'error'}>{item.validationMessage}</AlertBanner>
-                ) : null}
-              </div>
-            ) : null}
+            <ImageValidationCard
+              previewUrl={item.previewUrl}
+              requestedLabel={item.label}
+              analyzing={item.analyzing}
+              analysis={item.analysis}
+              validationMessage={item.validationMessage}
+            />
 
             {item.analysisError ? <AlertBanner type="error">{item.analysisError}</AlertBanner> : null}
           </article>
