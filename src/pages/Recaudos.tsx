@@ -17,6 +17,15 @@ const hasImagesNoCoincide = (items: CommerceImageItem[]): boolean =>
   items.some((item) => item.analysis?.validationResult === 'NO COINCIDE');
 const hasUploaded = (items: UploadedDocumentResult[]): boolean => items.length > 0;
 const buildRegistro = (): string => `EXP-${Date.now().toString().slice(-8)}`;
+const PHONE_EXAMPLE = '0412-1234567 o +58 412-1234567';
+const isValidEmail = (value: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value.trim());
+const isValidVenezuelanPhone = (value: string): boolean => {
+  const digits = value.replace(/\D/g, '');
+  const mobileCodes = new Set(['412', '414', '416', '424', '426']);
+  if (digits.startsWith('58') && digits.length === 12) return mobileCodes.has(digits.slice(2, 5));
+  if (digits.startsWith('0') && digits.length === 11) return mobileCodes.has(digits.slice(1, 4));
+  return false;
+};
 const splitFullName = (value: string): { nombres: string; apellidos: string } => {
   const clean = value.trim().replace(/\s+/g, ' ');
   if (!clean) return { nombres: '', apellidos: '' };
@@ -108,9 +117,20 @@ export default function Recaudos() {
     setRepCedula(cedulaNumero ?? '');
   }, [juridicaRepresentantes]);
 
+  const naturalPhoneInvalid = useMemo(() => naturalTelefono.trim() !== '' && !isValidVenezuelanPhone(naturalTelefono), [naturalTelefono]);
+  const naturalEmailInvalid = useMemo(() => naturalCorreo.trim() !== '' && !isValidEmail(naturalCorreo), [naturalCorreo]);
   const naturalDataReady = useMemo(
-    () => Boolean(naturalNombres.trim() && naturalApellidos.trim() && naturalCedulaId.trim() && naturalTelefono.trim() && naturalCorreo.trim()),
-    [naturalApellidos, naturalCedulaId, naturalCorreo, naturalNombres, naturalTelefono]
+    () =>
+      Boolean(
+        naturalNombres.trim() &&
+          naturalApellidos.trim() &&
+          naturalCedulaId.trim() &&
+          naturalTelefono.trim() &&
+          naturalCorreo.trim() &&
+          !naturalPhoneInvalid &&
+          !naturalEmailInvalid
+      ),
+    [naturalApellidos, naturalCedulaId, naturalCorreo, naturalEmailInvalid, naturalNombres, naturalPhoneInvalid, naturalTelefono]
   );
 
   const naturalStep1Ready = useMemo(
@@ -123,6 +143,8 @@ export default function Recaudos() {
     [naturalHasNoCoincide, naturalImages]
   );
 
+  const repPhoneInvalid = useMemo(() => repTelefono.trim() !== '' && !isValidVenezuelanPhone(repTelefono), [repTelefono]);
+  const repEmailInvalid = useMemo(() => repCorreo.trim() !== '' && !isValidEmail(repCorreo), [repCorreo]);
   const juridicaDataReady = useMemo(
     () =>
       Boolean(
@@ -132,9 +154,11 @@ export default function Recaudos() {
           repApellidos.trim() &&
           repCedula.trim() &&
           repTelefono.trim() &&
-          repCorreo.trim()
+          repCorreo.trim() &&
+          !repPhoneInvalid &&
+          !repEmailInvalid
       ),
-    [juridicaRazonSocial, juridicaRifEmpresa, repApellidos, repCedula, repCorreo, repNombres, repTelefono]
+    [juridicaRazonSocial, juridicaRifEmpresa, repApellidos, repCedula, repCorreo, repEmailInvalid, repNombres, repPhoneInvalid, repTelefono]
   );
 
   const juridicaStep1Ready = useMemo(
@@ -161,8 +185,8 @@ export default function Recaudos() {
     nombres: !naturalNombres.trim(),
     apellidos: !naturalApellidos.trim(),
     cedulaId: !naturalCedulaId.trim(),
-    telefono: !naturalTelefono.trim(),
-    correo: !naturalCorreo.trim()
+    telefono: !naturalTelefono.trim() || naturalPhoneInvalid,
+    correo: !naturalCorreo.trim() || naturalEmailInvalid
   };
   const naturalMissingFieldsStep1: string[] = [
     ...(naturalMissing.cedula ? ['Cédula de identidad'] : []),
@@ -171,8 +195,8 @@ export default function Recaudos() {
     ...(naturalMissing.nombres ? ['Nombres'] : []),
     ...(naturalMissing.apellidos ? ['Apellidos'] : []),
     ...(naturalMissing.cedulaId ? ['Cédula de identidad (número)'] : []),
-    ...(naturalMissing.telefono ? ['Número de teléfono'] : []),
-    ...(naturalMissing.correo ? ['Correo'] : [])
+    ...(naturalMissing.telefono ? [`Número de teléfono (formato VE: ${PHONE_EXAMPLE})`] : []),
+    ...(naturalMissing.correo ? ['Correo (formato válido: usuario@dominio.com)'] : [])
   ];
   const naturalMissingFieldsStep2: string[] = [
     ...(!isImagesComplete(naturalImages) ? ['Imágenes del comercio (faltan adjuntos)'] : []),
@@ -191,8 +215,8 @@ export default function Recaudos() {
     repNombres: !repNombres.trim(),
     repApellidos: !repApellidos.trim(),
     repCedula: !repCedula.trim(),
-    repTelefono: !repTelefono.trim(),
-    repCorreo: !repCorreo.trim()
+    repTelefono: !repTelefono.trim() || repPhoneInvalid,
+    repCorreo: !repCorreo.trim() || repEmailInvalid
   };
   const juridicaMissingFieldsStep1: string[] = [
     ...(juridicaMissing.rif ? ['RIF'] : []),
@@ -204,8 +228,8 @@ export default function Recaudos() {
     ...(juridicaMissing.repNombres ? ['Nombres del representante'] : []),
     ...(juridicaMissing.repApellidos ? ['Apellidos del representante'] : []),
     ...(juridicaMissing.repCedula ? ['Cédula del representante (número)'] : []),
-    ...(juridicaMissing.repTelefono ? ['Número de teléfono del representante'] : []),
-    ...(juridicaMissing.repCorreo ? ['Correo del representante'] : [])
+    ...(juridicaMissing.repTelefono ? [`Número de teléfono del representante (formato VE: ${PHONE_EXAMPLE})`] : []),
+    ...(juridicaMissing.repCorreo ? ['Correo del representante (formato válido: usuario@dominio.com)'] : [])
   ];
   const juridicaMissingFieldsStep2: string[] = [
     ...(!isImagesComplete(juridicaImages) ? ['Imágenes del comercio (faltan adjuntos)'] : []),
@@ -382,8 +406,11 @@ export default function Recaudos() {
                   <label className="text-sm font-medium text-ubii-black">
                     Número de teléfono
                     <input
+                      type="tel"
+                      inputMode="tel"
+                      placeholder="Ej: 0412-1234567"
                       value={naturalTelefono}
-                      onChange={(event) => setNaturalTelefono(event.target.value)}
+                      onChange={(event) => setNaturalTelefono(event.target.value.replace(/[^\d+\s()-]/g, ''))}
                       className={`mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm text-ubii-black ${
                         naturalStep1Tried && naturalMissing.telefono ? missingInputClass : 'border-ubii-border'
                       }`}
@@ -393,12 +420,17 @@ export default function Recaudos() {
                     Correo
                     <input
                       type="email"
+                      inputMode="email"
+                      placeholder="usuario@dominio.com"
                       value={naturalCorreo}
                       onChange={(event) => setNaturalCorreo(event.target.value)}
                       className={`mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm text-ubii-black ${
                         naturalStep1Tried && naturalMissing.correo ? missingInputClass : 'border-ubii-border'
                       }`}
                     />
+                    {naturalStep1Tried && naturalEmailInvalid ? (
+                      <span className="mt-1 block text-xs text-red-600">Ingresa un correo válido. Ejemplo: usuario@dominio.com</span>
+                    ) : null}
                   </label>
                 </div>
               </section>
@@ -575,8 +607,11 @@ export default function Recaudos() {
                     <label className="text-sm font-medium text-ubii-black">
                       Número de teléfono
                       <input
+                        type="tel"
+                        inputMode="tel"
+                        placeholder="Ej: 0412-1234567"
                         value={repTelefono}
-                        onChange={(event) => setRepTelefono(event.target.value)}
+                        onChange={(event) => setRepTelefono(event.target.value.replace(/[^\d+\s()-]/g, ''))}
                         className={`mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm text-ubii-black ${
                           juridicaStep1Tried && juridicaMissing.repTelefono ? missingInputClass : 'border-ubii-border'
                         }`}
@@ -586,12 +621,17 @@ export default function Recaudos() {
                       Correo
                       <input
                         type="email"
+                        inputMode="email"
+                        placeholder="usuario@dominio.com"
                         value={repCorreo}
                         onChange={(event) => setRepCorreo(event.target.value)}
                         className={`mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm text-ubii-black ${
                           juridicaStep1Tried && juridicaMissing.repCorreo ? missingInputClass : 'border-ubii-border'
                         }`}
                       />
+                      {juridicaStep1Tried && repEmailInvalid ? (
+                        <span className="mt-1 block text-xs text-red-600">Ingresa un correo válido. Ejemplo: usuario@dominio.com</span>
+                      ) : null}
                     </label>
                   </div>
                 </section>
