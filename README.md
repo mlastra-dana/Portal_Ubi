@@ -65,6 +65,17 @@ npm run preview
 - Si defines `VITE_TESSERACT_LANG_PATH` y esa ruta falla, el OCR hace fallback automatico al modo online.
 - Opcional: define `VITE_IDP_LAMBDA_URL` para activar fallback IDP (Lambda) cuando nombres/apellidos no se puedan extraer bien con OCR local.
 
+### Lambda IDP (Cédula/RIF)
+
+- Archivo sugerido: `lambda/idp_ocr_handler.py`
+- Runtime recomendado: `Python 3.11`
+- Handler: `idp_ocr_handler.lambda_handler`
+- Requiere permisos IAM en el role del Lambda:
+  - `textract:DetectDocumentText`
+- Activa Function URL en modo `POST` + CORS.
+- Luego configura en Amplify Hosting:
+  - `VITE_IDP_LAMBDA_URL=https://<tu-function-url>`
+
 Ejemplo `amplify.yml`:
 
 ```yaml

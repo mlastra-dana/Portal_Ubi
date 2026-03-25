@@ -17,6 +17,7 @@ const isImagesValid = (items: CommerceImageItem[]): boolean => items.length === 
 const hasImagesNoCoincide = (items: CommerceImageItem[]): boolean =>
   items.some((item) => item.analysis?.validationResult === 'NO COINCIDE');
 const hasUploaded = (items: UploadedDocumentResult[]): boolean => items.length > 0;
+const hasValidated = (items: UploadedDocumentResult[]): boolean => items.some((item) => item.validationStatus === 'VALIDO');
 const buildRegistro = (): string => `EXP-${Date.now().toString().slice(-8)}`;
 const PHONE_EXAMPLE = '0412-1234567 o +58 412-1234567';
 const isValidEmail = (value: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value.trim());
@@ -229,8 +230,8 @@ export default function Recaudos() {
   const missingInputClass = 'border-red-400 ring-1 ring-red-200';
 
   const naturalMissing = {
-    cedula: !hasUploaded(naturalCedula),
-    rif: !hasUploaded(naturalRif),
+    cedula: !hasValidated(naturalCedula),
+    rif: !hasValidated(naturalRif),
     selfie: !naturalSelfie,
     nombres: !naturalNombres.trim(),
     apellidos: !naturalApellidos.trim(),
@@ -256,8 +257,8 @@ export default function Recaudos() {
   ];
 
   const juridicaMissing = {
-    representantes: !hasUploaded(juridicaRepresentantes),
-    rif: !hasUploaded(juridicaRif),
+    representantes: !hasValidated(juridicaRepresentantes),
+    rif: !hasValidated(juridicaRif),
     actaRegistro: !juridicaActaRegistro.some((item) => item.validationStatus === 'VALIDO'),
     selfie: !juridicaSelfie,
     razonSocial: !juridicaRazonSocial.trim(),

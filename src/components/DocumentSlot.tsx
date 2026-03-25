@@ -57,18 +57,20 @@ const validateOcrDocKind = (
 ): { status: 'VALIDO' | 'REVISAR'; message: string } => {
   const upper = normalizeText(rawText);
   const normalizedId = (fields.numeroId ?? '').toUpperCase();
+  const hasRifKeyword = /RIF|REGISTRO UNICO DE INFORMACION FISCAL|SENIAT|CONTRIBUYENTE/.test(upper);
+  const hasCedulaKeyword = /CEDULA|C[ÉE]DULA DE IDENTIDAD|IDENTIDAD/.test(upper);
 
   if (docKind === 'RIF') {
-    const hasRifKeyword = /RIF|REGISTRO UNICO DE INFORMACION FISCAL|SENIAT/.test(upper);
     const hasRifFormat = /^[JGVEP]\d{8,10}$/.test(normalizedId) || /^[JGVEP]-\d{7,9}-?\d?$/.test(normalizedId);
     if (hasRifKeyword || hasRifFormat) return { status: 'VALIDO', message: 'Documento validado como RIF.' };
     return { status: 'REVISAR', message: 'El archivo no parece un RIF.' };
   }
 
   if (docKind === 'CEDULA' || docKind === 'CEDULA_REPRESENTANTE') {
-    const hasCedulaKeyword = /CEDULA|C[ÉE]DULA DE IDENTIDAD|IDENTIDAD/.test(upper);
     const hasCedulaFormat = /^[VE]\d{6,10}$/.test(normalizedId) || /^[VE]-\d{6,10}$/.test(normalizedId);
-    if (hasCedulaKeyword || hasCedulaFormat) return { status: 'VALIDO', message: 'Documento validado como Cédula.' };
+    if (hasRifKeyword) return { status: 'REVISAR', message: 'El archivo parece un RIF y no una Cédula.' };
+    if (hasCedulaKeyword && hasCedulaFormat) return { status: 'VALIDO', message: 'Documento validado como Cédula.' };
+    if (hasCedulaKeyword) return { status: 'VALIDO', message: 'Documento validado como Cédula.' };
     return { status: 'REVISAR', message: 'El archivo no parece una Cédula.' };
   }
 
@@ -106,7 +108,7 @@ const getValidationAlertType = (status?: 'VALIDO' | 'REVISAR', message?: string)
   if (status === 'VALIDO') return 'success';
   if (status !== 'REVISAR') return null;
   const normalized = normalizeText(message ?? '');
-  if (normalized.includes('NO CORRESPONDE') || normalized.includes('NO PARECE')) return 'error';
+  if (normalized.includes('NO CORRESPONDE') || normalized.includes('NO PARECE') || normalized.includes('PARECE UN RIF')) return 'error';
   return 'warning';
 };
 
@@ -183,6 +185,17 @@ const buildOcrSummary = (
   return result.join('\n').trim();
 };
 
+const isDocTypeHardMismatch = (docKind: DocKind, message?: string): boolean => {
+  const normalized = normalizeText(message ?? '');
+  if (docKind === 'CEDULA' || docKind === 'CEDULA_REPRESENTANTE') {
+    return normalized.includes('PARECE UN RIF') || normalized.includes('NO PARECE UNA CEDULA');
+  }
+  if (docKind === 'RIF') {
+    return normalized.includes('NO PARECE UN RIF');
+  }
+  return false;
+};
+
 export function DocumentSlot({ label, required = false, multiple = false, docKind, description, onChange, className = '' }: Props) {
   const [results, setResults] = useState<UploadedDocumentResult[]>([]);
   const inputId = useId();
@@ -232,9 +245,11 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
             : await ocrFile(file, (progress) => setItem({ progress }));
         const fields = docKind === 'ACTA_REGISTRO' ? emptyFields : extractFields(rawText);
         const validation = docKind === 'ACTA_REGISTRO' ? validateActaRegistro(file, rawText) : validateOcrDocKind(docKind, rawText, fields);
+        const hardMismatch = isDocTypeHardMismatch(docKind, validation.message);
+        const safeFields = hardMismatch ? emptyFields : fields;
 
         let parseWarning: string | undefined;
-        if (docKind !== 'ACTA_REGISTRO' && fields.fechaVencimiento && !parseDateStrict(fields.fechaVencimiento)) {
+        if (!hardMismatch && docKind !== 'ACTA_REGISTRO' && fields.fechaVencimiento && !parseDateStrict(fields.fechaVencimiento)) {
           parseWarning = 'Se detecto una fecha, pero no pudo parsearse de forma estricta.';
         }
 
@@ -242,9 +257,9 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
           processing: false,
           progress: 100,
           rawText: rawText.trim(),
-          ocrDisplayText: buildOcrSummary(docKind, fields, rawText),
+          ocrDisplayText: buildOcrSummary(docKind, safeFields, rawText),
           confidence: Math.round(confidence),
-          fields,
+          fields: safeFields,
           parseWarning,
           validationStatus: validation.status,
           validationMessage: validation.message
@@ -328,7 +343,8 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
 
       {results.map((result) => {
         const parsedExpiry = parseDateStrict(result.fields.fechaVencimiento ?? '');
-        const hasExpiry = supportsExpiryWarning(docKind) && Boolean(parsedExpiry);
+        const hardMismatch = isDocTypeHardMismatch(docKind, result.validationMessage);
+        const hasExpiry = !hardMismatch && supportsExpiryWarning(docKind) && Boolean(parsedExpiry);
         const showExpiredWarning = hasExpiry && parsedExpiry ? isExpired(parsedExpiry) : false;
         const showSoonWarning = hasExpiry && parsedExpiry ? !showExpiredWarning && isExpiringSoon(parsedExpiry, 6) : false;
         const showOcr = requiresOcr(docKind);
