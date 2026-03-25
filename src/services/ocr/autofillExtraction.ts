@@ -1,6 +1,8 @@
 const NOISE_WORDS =
   /\b(APELLIDOS?|NOMBRES?|EXPEDICION|VENCIMIENTO|COMPROBANTE|REPUBLICA|BOLIVARIANA|VENEZUELA|IDENTIDAD|CEDULA|RIF|SENIAT|FECHA|INSCRIPCION|DOMICILIO|FISCAL|ACTUALIZACION|FIRMA|AUTORIZADA|CONDICION|CONTRIBUYENTE|TASA|DIRECTOR|TITULAR|NACIONALIDAD|VENEZOLANO)\b/gi;
 const AUTHORITY_WORDS = /\b(DIRECTOR|TITULAR|FIRMA|AUTORIZADA|MINISTRO|PRESIDENTE)\b/i;
+const TRAILING_GARBAGE_TOKEN = /^(NA|N|A|EA|ER|OD|DI|RR|ZN)$/i;
+const CONNECTORS = new Set(['DE', 'DEL', 'LA', 'LAS', 'LOS', 'DA', 'DAS', 'DO', 'DOS', 'DI']);
 
 const cleanText = (value: string): string =>
   value
@@ -45,11 +47,72 @@ const normalizeId = (value: string): string | null => {
 };
 
 const cleanPersonValue = (value: string): string => {
-  return cleanName(value)
+  const stopAtAuthority = value
+    .replace(/\b(NA\)|N\)|DIRECTOR|TITULAR|MINISTRO|PRESIDENTE)\b.*$/gi, ' ')
+    .replace(/\b[A-Z][a-z]+\s+[A-Z][a-z]+\b\s*(DIRECTOR|TITULAR)?/g, ' ');
+
+  return cleanName(stopAtAuthority)
     .replace(/\b(DIRECTOR|TITULAR|FIRMA|AUTORIZADA)\b.*$/gi, ' ')
     .replace(/\b(EA|ER|OD|DI|RR|ZN)\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+};
+
+const firstNameChunk = (value: string, maxWords = 4): string => {
+  const tokens = cleanPersonValue(value)
+    .split(' ')
+    .filter(Boolean)
+    .filter((token) => /^[A-Za-zÁÉÍÓÚÑáéíóúñ]{2,}$/.test(token));
+  return tokens.slice(0, maxWords).join(' ');
+};
+
+const scorePersonCandidate = (value: string): number => {
+  const tokens = sanitizeFinalPersonName(value)
+    .split(' ')
+    .filter(Boolean);
+  if (tokens.length < 2 || tokens.length > 5) return -1;
+  if (tokens.some((token) => token.length < 2)) return -1;
+  const longCount = tokens.filter((token) => token.length >= 3).length;
+  const connectorCount = tokens.filter((token) => CONNECTORS.has(normalizeUpper(token))).length;
+  return longCount * 3 + connectorCount;
+};
+
+const pickBestPersonCandidate = (candidates: string[]): string => {
+  const normalized = candidates
+    .map((candidate) => sanitizeFinalPersonName(candidate))
+    .filter((candidate) => candidate.length > 0)
+    .map((candidate) => ({ value: candidate, score: scorePersonCandidate(candidate) }))
+    .filter((item) => item.score >= 0)
+    .sort((a, b) => b.score - a.score || b.value.length - a.value.length);
+  return normalized[0]?.value ?? '';
+};
+
+const sanitizeFinalPersonName = (value: string): string => {
+  const tokens = cleanPersonValue(value)
+    .split(' ')
+    .filter(Boolean)
+    .filter((token) => /^[A-Za-zÁÉÍÓÚÑáéíóúñ]+$/.test(token))
+    .filter((token) => !AUTHORITY_WORDS.test(token));
+
+  while (tokens.length > 0) {
+    const last = tokens[tokens.length - 1];
+    const upperLast = normalizeUpper(last);
+    if (TRAILING_GARBAGE_TOKEN.test(upperLast)) {
+      tokens.pop();
+      continue;
+    }
+    if (last.length <= 2 && !CONNECTORS.has(upperLast)) {
+      tokens.pop();
+      continue;
+    }
+    break;
+  }
+
+  while (tokens.length > 0 && CONNECTORS.has(normalizeUpper(tokens[tokens.length - 1]))) {
+    tokens.pop();
+  }
+
+  return tokens.join(' ').trim();
 };
 
 const getValueAfterKeyword = (line: string, keywordRegex: RegExp): string => {
@@ -103,29 +166,27 @@ export function extractCedulaAutofill(rawText: string): { nombres: string | null
       const right = cleanName(rightRaw);
 
       if (!apellidos && isApellidoLabel(normalizedLine)) {
-        const fromLeft = cleanName(leftRaw.replace(/.*(APELL\w*|APELID\w*|AVEL\w*)/i, ''));
-        const fromTrimmed = cleanName(removeFirstToken(leftRaw));
-        if (isLikelyNameText(fromLeft)) apellidos = fromLeft;
-        else if (isLikelyNameText(fromTrimmed)) apellidos = fromTrimmed;
-        else if (isLikelyNameText(left)) apellidos = left;
+        const fromLeft = firstNameChunk(leftRaw.replace(/.*(APELL\w*|APELID\w*|AVEL\w*)/i, ''));
+        const fromTrimmed = firstNameChunk(removeFirstToken(leftRaw));
+        const best = pickBestPersonCandidate([fromLeft, fromTrimmed, left, right, rightRaw, leftRaw]);
+        if (best) apellidos = best;
       }
 
       if (!nombres && isNombreLabel(normalizedLine)) {
-        const fromLeft = cleanName(leftRaw.replace(/.*(N\w{0,4}OMB\w*|NOMER\w*|NOME\w*|VOW?ER\w*|N0MB\w*|NOM8\w*)/i, ''));
-        const fromTrimmed = cleanName(removeFirstToken(leftRaw));
-        if (isLikelyNameText(fromLeft)) nombres = fromLeft;
-        else if (isLikelyNameText(fromTrimmed)) nombres = fromTrimmed;
-        else if (isLikelyNameText(left)) nombres = left;
+        const fromLeft = firstNameChunk(leftRaw.replace(/.*(N\w{0,4}OMB\w*|NOMER\w*|NOME\w*|VOW?ER\w*|N0MB\w*|NOM8\w*)/i, ''));
+        const fromTrimmed = firstNameChunk(removeFirstToken(leftRaw));
+        const best = pickBestPersonCandidate([fromLeft, fromTrimmed, left, right, rightRaw, leftRaw]);
+        if (best) nombres = best;
       }
 
-      if (!nombres && isLikelyNameText(right)) nombres = right;
+      if (!nombres && isLikelyNameText(right)) nombres = sanitizeFinalPersonName(right);
       if (
         !apellidos &&
         isLikelyNameText(left) &&
         left.split(' ').length <= 3 &&
         !/EXPEDICION|VENCIMIENTO|DIRECTOR|TITULAR/i.test(left)
       ) {
-        apellidos = left;
+        apellidos = sanitizeFinalPersonName(left);
       }
     }
   }
@@ -144,8 +205,8 @@ export function extractCedulaAutofill(rawText: string): { nombres: string | null
     apellidos = swap;
   }
 
-  const cleanedNames = cleanPersonValue(nombres);
-  const cleanedSurnames = cleanPersonValue(apellidos);
+  const cleanedNames = sanitizeFinalPersonName(nombres);
+  const cleanedSurnames = sanitizeFinalPersonName(apellidos);
   const strictNames = looksLikePersonName(cleanedNames) ? cleanedNames : '';
   const strictSurnames = looksLikePersonName(cleanedSurnames) ? cleanedSurnames : '';
 

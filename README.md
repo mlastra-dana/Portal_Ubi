@@ -63,6 +63,7 @@ npm run preview
 - Opcional para mayor control: define `VITE_TESSERACT_LANG_PATH` en Amplify para cargar idiomas desde una ruta propia (por ejemplo `/tessdata`).
 - Si no defines `VITE_TESSERACT_LANG_PATH`, `tesseract.js` descargara `traineddata` desde jsDelivr.
 - Si defines `VITE_TESSERACT_LANG_PATH` y esa ruta falla, el OCR hace fallback automatico al modo online.
+- Opcional: define `VITE_IDP_LAMBDA_URL` para activar fallback IDP (Lambda) cuando nombres/apellidos no se puedan extraer bien con OCR local.
 
 Ejemplo `amplify.yml`:
 

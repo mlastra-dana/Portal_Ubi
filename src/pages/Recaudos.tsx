@@ -4,6 +4,7 @@ import { CommerceImages } from '../components/CommerceImages';
 import { DocumentSlot } from '../components/DocumentSlot';
 import { SelfieProof } from '../components/SelfieProof';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
+import { extractIdentityWithIdp, idpEnabled } from '../services/idpClient';
 import { extractCedulaAutofill, extractRifAutofill } from '../services/ocr/autofillExtraction';
 import type { CommerceImageItem, UploadedDocumentResult } from '../types/recaudos';
 
@@ -55,6 +56,7 @@ export default function Recaudos() {
   const [naturalCorreo, setNaturalCorreo] = useState('');
   const [naturalStep1Tried, setNaturalStep1Tried] = useState(false);
   const [naturalStep2Tried, setNaturalStep2Tried] = useState(false);
+  const [naturalIdpLoading, setNaturalIdpLoading] = useState(false);
 
   const [juridicaRepresentantes, setJuridicaRepresentantes] = useState<UploadedDocumentResult[]>([]);
   const [juridicaRif, setJuridicaRif] = useState<UploadedDocumentResult[]>([]);
@@ -71,6 +73,7 @@ export default function Recaudos() {
   const [repCorreo, setRepCorreo] = useState('');
   const [juridicaStep1Tried, setJuridicaStep1Tried] = useState(false);
   const [juridicaStep2Tried, setJuridicaStep2Tried] = useState(false);
+  const [repIdpLoading, setRepIdpLoading] = useState(false);
 
   useEffect(() => {
     const cedula = naturalCedula[0];
@@ -78,15 +81,37 @@ export default function Recaudos() {
       setNaturalNombres('');
       setNaturalApellidos('');
       setNaturalCedulaId('');
+      setNaturalIdpLoading(false);
       return;
     }
+
+    let cancelled = false;
     const extracted = extractCedulaAutofill(cedula.rawText ?? '');
-    const nameSource = extracted.nombres && extracted.apellidos ? `${extracted.nombres} ${extracted.apellidos}` : cedula.fields.nombres ?? '';
+    const nameSource = extracted.nombres && extracted.apellidos ? `${extracted.nombres} ${extracted.apellidos}` : '';
     const { nombres, apellidos } = splitFullName(nameSource);
-    setNaturalNombres(nombres);
-    setNaturalApellidos(apellidos);
+    setNaturalNombres(extracted.nombres ?? nombres);
+    setNaturalApellidos(extracted.apellidos ?? apellidos);
     const cedulaNumero = extracted.cedula ?? cedula.fields.numeroId;
     setNaturalCedulaId(cedulaNumero ?? '');
+
+    const shouldTryIdp = idpEnabled() && (!extracted.nombres || !extracted.apellidos);
+    if (shouldTryIdp) {
+      setNaturalIdpLoading(true);
+      void extractIdentityWithIdp(cedula).then((idp) => {
+        if (cancelled || !idp) return;
+        if (idp.nombres) setNaturalNombres(idp.nombres);
+        if (idp.apellidos) setNaturalApellidos(idp.apellidos);
+        if (idp.cedula) setNaturalCedulaId(idp.cedula);
+      }).finally(() => {
+        if (!cancelled) setNaturalIdpLoading(false);
+      });
+    } else {
+      setNaturalIdpLoading(false);
+    }
+
+    return () => {
+      cancelled = true;
+    };
   }, [naturalCedula]);
 
   useEffect(() => {
@@ -109,15 +134,37 @@ export default function Recaudos() {
       setRepNombres('');
       setRepApellidos('');
       setRepCedula('');
+      setRepIdpLoading(false);
       return;
     }
+
+    let cancelled = false;
     const extracted = extractCedulaAutofill(rep.rawText ?? '');
-    const nameSource = extracted.nombres && extracted.apellidos ? `${extracted.nombres} ${extracted.apellidos}` : rep.fields.nombres ?? '';
+    const nameSource = extracted.nombres && extracted.apellidos ? `${extracted.nombres} ${extracted.apellidos}` : '';
     const { nombres, apellidos } = splitFullName(nameSource);
-    setRepNombres(nombres);
-    setRepApellidos(apellidos);
+    setRepNombres(extracted.nombres ?? nombres);
+    setRepApellidos(extracted.apellidos ?? apellidos);
     const cedulaNumero = extracted.cedula ?? rep.fields.numeroId;
     setRepCedula(cedulaNumero ?? '');
+
+    const shouldTryIdp = idpEnabled() && (!extracted.nombres || !extracted.apellidos);
+    if (shouldTryIdp) {
+      setRepIdpLoading(true);
+      void extractIdentityWithIdp(rep).then((idp) => {
+        if (cancelled || !idp) return;
+        if (idp.nombres) setRepNombres(idp.nombres);
+        if (idp.apellidos) setRepApellidos(idp.apellidos);
+        if (idp.cedula) setRepCedula(idp.cedula);
+      }).finally(() => {
+        if (!cancelled) setRepIdpLoading(false);
+      });
+    } else {
+      setRepIdpLoading(false);
+    }
+
+    return () => {
+      cancelled = true;
+    };
   }, [juridicaRepresentantes]);
 
   const naturalPhoneInvalid = useMemo(() => naturalTelefono.trim() !== '' && !isValidVenezuelanPhone(naturalTelefono), [naturalTelefono]);
@@ -381,6 +428,9 @@ export default function Recaudos() {
                 }`}
               >
                 <h3 className="text-lg font-semibold text-ubii-blue">Identificación</h3>
+                {naturalIdpLoading ? (
+                  <p className="mt-2 text-xs text-ubii-blue">Completando datos con validación IDP...</p>
+                ) : null}
                 <div className="mt-4 grid gap-4">
                   <label className="text-sm font-medium text-ubii-black">
                     Nombres
@@ -582,6 +632,9 @@ export default function Recaudos() {
                   }`}
                 >
                   <h3 className="text-lg font-semibold text-ubii-blue">Datos del representante legal</h3>
+                  {repIdpLoading ? (
+                    <p className="mt-2 text-xs text-ubii-blue">Completando datos con validación IDP...</p>
+                  ) : null}
                   <div className="mt-4 grid gap-4 md:grid-cols-2">
                     <label className="text-sm font-medium text-ubii-black">
                       Nombres

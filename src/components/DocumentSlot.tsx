@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import { ocrFile, ocrFileFast } from '../services/ocr/ocrEngine';
+import { extractCedulaAutofill, extractRifAutofill } from '../services/ocr/autofillExtraction';
 import { extractFields } from '../services/ocr/fieldExtraction';
 import type { DocKind, UploadedDocumentResult } from '../types/recaudos';
 import { isExpired, parseDateStrict } from '../utils/date';
@@ -120,13 +121,13 @@ const pickRelevantLines = (rawText: string, docKind: DocKind): string[] => {
 
   const patternsByDoc: Record<DocKind, RegExp[]> = {
     CEDULA: [
-      /NOMBRE|NOMBRES|APELLIDO|APELLIDOS/i,
+      /NOMBRE|NOMBRES|NOMER|NOMERE|APELLIDO|APELLIDOS|APELID|AVEL/i,
       /C[ÉE]DULA|IDENTIDAD|^([VE])[-.\s]?\d{6,10}\b/i,
       /VENCIMIENTO|EXPEDICION|F\.\s*VENCIMIENTO|F\.\s*EXPEDICION/i,
       /\b\d{2}[/-]\d{2}[/-]\d{4}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{2}[/-]\d{4}\b/i
     ],
     CEDULA_REPRESENTANTE: [
-      /NOMBRE|NOMBRES|APELLIDO|APELLIDOS/i,
+      /NOMBRE|NOMBRES|NOMER|NOMERE|APELLIDO|APELLIDOS|APELID|AVEL/i,
       /C[ÉE]DULA|IDENTIDAD|^([VE])[-.\s]?\d{6,10}\b/i,
       /VENCIMIENTO|EXPEDICION|F\.\s*VENCIMIENTO|F\.\s*EXPEDICION/i,
       /\b\d{2}[/-]\d{2}[/-]\d{4}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{2}[/-]\d{4}\b/i
@@ -152,8 +153,24 @@ const buildOcrSummary = (
   rawText: string
 ): string => {
   const result: string[] = [];
-  if (fields.nombres) result.push(`Nombre/Razon social: ${fields.nombres}`);
-  if (fields.numeroId) result.push(`Numero de identificacion: ${fields.numeroId}`);
+
+  if (docKind === 'CEDULA' || docKind === 'CEDULA_REPRESENTANTE') {
+    const extracted = extractCedulaAutofill(rawText);
+    if (extracted.nombres && extracted.apellidos) result.push(`Nombre/Razon social: ${extracted.nombres} ${extracted.apellidos}`.trim());
+    if (extracted.cedula) result.push(`Numero de identificacion: ${extracted.cedula}`);
+  } else if (docKind === 'RIF') {
+    const extracted = extractRifAutofill(rawText);
+    if (extracted.razonSocial) result.push(`Nombre/Razon social: ${extracted.razonSocial}`);
+    if (extracted.rif) result.push(`Numero de identificacion: ${extracted.rif}`);
+  } else {
+    if (fields.nombres) result.push(`Nombre/Razon social: ${fields.nombres}`);
+    if (fields.numeroId) result.push(`Numero de identificacion: ${fields.numeroId}`);
+  }
+
+  if (!result.some((line) => line.startsWith('Numero de identificacion:')) && fields.numeroId) {
+    result.push(`Numero de identificacion: ${fields.numeroId}`);
+  }
+
   if (fields.fechaVencimiento) result.push(`Fecha de vencimiento: ${fields.fechaVencimiento}`);
 
   const relevantLines = pickRelevantLines(rawText, docKind);
