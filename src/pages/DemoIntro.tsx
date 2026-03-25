@@ -13,12 +13,13 @@ export default function DemoIntro() {
           >
             Persona Natural
           </Link>
-          <Link
-            to="/recaudos?tipo=juridica"
-            className="group inline-flex min-h-32 items-center justify-center rounded-2xl border-2 border-ubii-blue bg-ubii-blue px-6 py-8 text-center text-2xl font-semibold text-white transition-colors hover:bg-ubii-hover"
+          <div
+            aria-disabled="true"
+            className="inline-flex min-h-32 cursor-not-allowed items-center justify-center rounded-2xl border-2 border-gray-300 bg-gray-100 px-6 py-8 text-center text-2xl font-semibold text-gray-500"
+            title="Disponible en la segunda etapa del proyecto"
           >
-            Persona Jurídica
-          </Link>
+            Persona Jurídica (Próximamente)
+          </div>
         </div>
       </section>
     </main>

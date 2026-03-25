@@ -57,6 +57,13 @@ npm run preview
 - Artifacts/output: `dist`
 - Node recomendado: `18+`
 
+### OCR en Produccion (Amplify)
+
+- El worker de `pdfjs-dist` y el worker/core de `tesseract.js` ahora se empaquetan localmente en el build (sin imports CDN).
+- Opcional para mayor control: define `VITE_TESSERACT_LANG_PATH` en Amplify para cargar idiomas desde una ruta propia (por ejemplo `/tessdata`).
+- Si no defines `VITE_TESSERACT_LANG_PATH`, `tesseract.js` descargara `traineddata` desde jsDelivr.
+- Si defines `VITE_TESSERACT_LANG_PATH` y esa ruta falla, el OCR hace fallback automatico al modo online.
+
 Ejemplo `amplify.yml`:
 
 ```yaml

@@ -13,6 +13,7 @@ export type UploadedDocumentResult = {
   progress: number;
   processing: boolean;
   rawText: string;
+  ocrDisplayText?: string;
   confidence: number | null;
   fields: OcrExtractedFields;
   validationStatus?: 'VALIDO' | 'REVISAR';

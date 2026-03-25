@@ -109,9 +109,67 @@ const getValidationAlertType = (status?: 'VALIDO' | 'REVISAR', message?: string)
   return 'warning';
 };
 
+const compactLine = (value: string): string => value.replace(/\s+/g, ' ').trim();
+
+const pickRelevantLines = (rawText: string, docKind: DocKind): string[] => {
+  const lines = rawText
+    .split(/\r?\n+/)
+    .map((line) => compactLine(line))
+    .filter(Boolean);
+  if (lines.length === 0) return [];
+
+  const patternsByDoc: Record<DocKind, RegExp[]> = {
+    CEDULA: [
+      /NOMBRE|NOMBRES|APELLIDO|APELLIDOS/i,
+      /C[ÉE]DULA|IDENTIDAD|^([VE])[-.\s]?\d{6,10}\b/i,
+      /VENCIMIENTO|EXPEDICION|F\.\s*VENCIMIENTO|F\.\s*EXPEDICION/i,
+      /\b\d{2}[/-]\d{2}[/-]\d{4}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{2}[/-]\d{4}\b/i
+    ],
+    CEDULA_REPRESENTANTE: [
+      /NOMBRE|NOMBRES|APELLIDO|APELLIDOS/i,
+      /C[ÉE]DULA|IDENTIDAD|^([VE])[-.\s]?\d{6,10}\b/i,
+      /VENCIMIENTO|EXPEDICION|F\.\s*VENCIMIENTO|F\.\s*EXPEDICION/i,
+      /\b\d{2}[/-]\d{2}[/-]\d{4}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{2}[/-]\d{4}\b/i
+    ],
+    RIF: [
+      /RIF|REGISTRO UNICO DE INFORMACION FISCAL|SENIAT/i,
+      /RAZ[ÓO]N\s+SOCIAL/i,
+      /\b[JGVEP][-.\s]?\d{8,10}\b/i
+    ],
+    ACTA_REGISTRO: [/REGISTRO|MERCANTIL|ACTA|CONSTITUTIV|ESTATUTOS/i],
+    ACTA: [/ACTA/i],
+    REGISTRO: [/REGISTRO/i]
+  };
+
+  const patterns = patternsByDoc[docKind];
+  const selected = lines.filter((line) => patterns.some((pattern) => pattern.test(line)));
+  return selected.slice(0, 8);
+};
+
+const buildOcrSummary = (
+  docKind: DocKind,
+  fields: { nombres: string | null; numeroId: string | null; fechaVencimiento: string | null },
+  rawText: string
+): string => {
+  const result: string[] = [];
+  if (fields.nombres) result.push(`Nombre/Razon social: ${fields.nombres}`);
+  if (fields.numeroId) result.push(`Numero de identificacion: ${fields.numeroId}`);
+  if (fields.fechaVencimiento) result.push(`Fecha de vencimiento: ${fields.fechaVencimiento}`);
+
+  const relevantLines = pickRelevantLines(rawText, docKind);
+  if (relevantLines.length > 0) {
+    result.push('');
+    result.push('Lineas OCR relevantes:');
+    relevantLines.forEach((line) => result.push(`- ${line}`));
+  }
+
+  return result.join('\n').trim();
+};
+
 export function DocumentSlot({ label, required = false, multiple = false, docKind, description, onChange, className = '' }: Props) {
   const [results, setResults] = useState<UploadedDocumentResult[]>([]);
   const inputId = useId();
+  const canUploadMore = multiple || results.length === 0;
 
   useEffect(() => {
     return () => {
@@ -130,6 +188,7 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
       progress: 0,
       processing: true,
       rawText: '',
+      ocrDisplayText: '',
       confidence: null,
       fields: emptyFields
     };
@@ -166,6 +225,7 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
           processing: false,
           progress: 100,
           rawText: rawText.trim(),
+          ocrDisplayText: buildOcrSummary(docKind, fields, rawText),
           confidence: Math.round(confidence),
           fields,
           parseWarning,
@@ -219,29 +279,33 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
 
       {description ? <p className="text-sm text-gray-600">{description}</p> : null}
 
-      <div className="rounded-xl border border-dashed border-ubii-border bg-ubii-light p-5">
-        <p className="text-center text-sm text-gray-600">Arrastra tu archivo o selecciónalo.</p>
-        <div className="mt-3 flex justify-center">
-          <label
-            htmlFor={inputId}
-            className="inline-flex cursor-pointer items-center rounded-lg border border-ubii-border bg-white px-4 py-2 text-sm font-semibold text-ubii-black"
-          >
-          {multiple ? 'Seleccionar archivos' : 'Seleccionar archivo'}
-          </label>
+      {canUploadMore ? (
+        <div className="rounded-xl border border-dashed border-ubii-border bg-ubii-light p-5">
+          <p className="text-center text-sm text-gray-600">Arrastra tu archivo o selecciónalo.</p>
+          <div className="mt-3 flex justify-center">
+            <label
+              htmlFor={inputId}
+              className="inline-flex cursor-pointer items-center rounded-lg border border-ubii-border bg-white px-4 py-2 text-sm font-semibold text-ubii-black"
+            >
+              {multiple ? 'Seleccionar archivos' : 'Seleccionar archivo'}
+            </label>
+          </div>
+          <input
+            id={inputId}
+            type="file"
+            accept={ACCEPT}
+            multiple={multiple}
+            onChange={(event) => {
+              const files = Array.from(event.target.files ?? []);
+              files.forEach((file) => void processFile(file));
+            }}
+            className="sr-only"
+          />
+          <p className="mt-3 text-center text-xs text-gray-600">PDF, JPG, PNG. Máx. 10MB.</p>
         </div>
-        <input
-          id={inputId}
-          type="file"
-          accept={ACCEPT}
-          multiple={multiple}
-          onChange={(event) => {
-            const files = Array.from(event.target.files ?? []);
-            files.forEach((file) => void processFile(file));
-          }}
-          className="sr-only"
-        />
-        <p className="mt-3 text-center text-xs text-gray-600">PDF, JPG, PNG. Máx. 10MB.</p>
-      </div>
+      ) : (
+        <AlertBanner type="info">Documento ya adjuntado. Si deseas reemplazarlo, elimina el archivo actual.</AlertBanner>
+      )}
 
       {results.length === 0 ? <p className="text-sm text-gray-600">Aún no hay validaciones ejecutadas.</p> : null}
 
@@ -320,8 +384,10 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
                 {result.parseWarning ? <AlertBanner type="warning">{result.parseWarning}</AlertBanner> : null}
 
                 <details className="rounded-lg border border-ubii-border bg-white p-3">
-                  <summary className="cursor-pointer text-sm font-semibold text-ubii-blue">Ver texto OCR</summary>
-                  <pre className="mt-2 whitespace-pre-wrap text-xs text-gray-700">{result.rawText || 'Sin texto detectado.'}</pre>
+                  <summary className="cursor-pointer text-sm font-semibold text-ubii-blue">Ver datos extraidos</summary>
+                  <pre className="mt-2 whitespace-pre-wrap text-xs text-gray-700">
+                    {result.ocrDisplayText || 'Sin datos detectados.'}
+                  </pre>
                 </details>
               </div>
             ) : null}

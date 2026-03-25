@@ -38,7 +38,10 @@ const splitFullName = (value: string): { nombres: string; apellidos: string } =>
 export default function Recaudos() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const moduleType: ModuleType = searchParams.get('tipo') === 'juridica' ? 'juridica' : 'natural';
+  const juridicaEnabled = import.meta.env.VITE_ENABLE_JURIDICA === 'true';
+  const requestedModuleType: ModuleType = searchParams.get('tipo') === 'juridica' ? 'juridica' : 'natural';
+  const juridicaRequested = requestedModuleType === 'juridica';
+  const moduleType: ModuleType = juridicaEnabled ? requestedModuleType : 'natural';
 
   const [naturalCedula, setNaturalCedula] = useState<UploadedDocumentResult[]>([]);
   const [naturalRif, setNaturalRif] = useState<UploadedDocumentResult[]>([]);
@@ -334,6 +337,12 @@ export default function Recaudos() {
         <h1 className="text-3xl font-bold text-white">Onboarding Recaudos</h1>
         <p className="text-blue-100">Carga tus documentos y fotos para continuar.</p>
       </header>
+
+      {juridicaRequested ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-100 px-4 py-2 text-sm text-amber-800">
+          El módulo Persona Jurídica está deshabilitado temporalmente y se habilitará en la segunda etapa del proyecto.
+        </div>
+      ) : null}
 
       {moduleType === 'natural' ? (
         <section className="space-y-4">

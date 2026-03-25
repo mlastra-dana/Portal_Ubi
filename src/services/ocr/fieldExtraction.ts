@@ -18,7 +18,14 @@ const cleanNameLabels = (value: string): string =>
   );
 
 const normalizeIdValue = (value: string): string | null => {
-  const compact = value.replace(/\s+/g, '').replace(/\./g, '').toUpperCase();
+  const compact = value
+    .replace(/\s+/g, '')
+    .replace(/\./g, '')
+    .toUpperCase()
+    .replace(/[OQ]/g, '0')
+    .replace(/[IL]/g, '1')
+    .replace(/S/g, '5')
+    .replace(/B/g, '8');
   if (!compact) return null;
 
   if (/^[VEJGP]-?\d{6,10}(?:-\d)?$/.test(compact)) return compact.replace(/-/g, '');
