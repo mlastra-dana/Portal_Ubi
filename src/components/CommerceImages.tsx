@@ -42,6 +42,11 @@ const slotHelpTextByKind: Record<CommerceImageKind, string> = {
 export function CommerceImages({ onChange, highlightMissing = false, highlightNoMatch = false, className = '' }: Props) {
   const [items, setItems] = useState<CommerceImageItem[]>(initialItems);
   const [activeCamera, setActiveCamera] = useState<CommerceImageKind | null>(null);
+  const [activeModeByKind, setActiveModeByKind] = useState<Record<CommerceImageKind, 'camera' | 'upload' | null>>({
+    fachada: null,
+    interior: null,
+    inventario: null
+  });
   const [cameraError, setCameraError] = useState<string>('');
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -64,12 +69,15 @@ export function CommerceImages({ onChange, highlightMissing = false, highlightNo
   }, [activeCamera]);
 
   const startCamera = async (kind: CommerceImageKind) => {
+    stopCamera();
+    setActiveModeByKind((prev) => ({ ...prev, [kind]: 'camera' }));
     setCameraError('');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
       streamRef.current = stream;
       setActiveCamera(kind);
     } catch {
+      setActiveModeByKind((prev) => ({ ...prev, [kind]: null }));
       setCameraError('No se pudo abrir la camara. Puedes usar subir archivo.');
     }
   };
@@ -191,7 +199,21 @@ export function CommerceImages({ onChange, highlightMissing = false, highlightNo
     if (!blob) return;
     const file = new File([blob], `${kind}-${Date.now()}.jpg`, { type: 'image/jpeg' });
     assignItem(kind, { blob, file, previewUrl: URL.createObjectURL(blob) });
+    setActiveModeByKind((prev) => ({ ...prev, [kind]: null }));
     stopCamera();
+  };
+
+  const openUpload = (kind: CommerceImageKind) => {
+    stopCamera();
+    setCameraError('');
+    setActiveModeByKind((prev) => ({ ...prev, [kind]: 'upload' }));
+  };
+
+  const cancelMode = (kind: CommerceImageKind) => {
+    if (activeCamera === kind) {
+      stopCamera();
+    }
+    setActiveModeByKind((prev) => ({ ...prev, [kind]: null }));
   };
 
   const allRequiredPresent = items.every((item) => Boolean(item.file));
@@ -233,28 +255,44 @@ export function CommerceImages({ onChange, highlightMissing = false, highlightNo
               <p className="text-lg font-semibold text-[#111111]">{item.label}</p>
               <p className="text-xs text-gray-600">{slotHelpTextByKind[item.kind]}</p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <PrimaryButton
-                className="!h-10 !rounded-xl !border-[#4B98CB] !bg-[#4B98CB] !px-4 !py-2 !text-xs hover:!border-[#3E86B6] hover:!bg-[#3E86B6]"
-                onClick={() => startCamera(item.kind)}
-              >
-                Tomar foto
-              </PrimaryButton>
-              <label className="inline-flex h-10 cursor-pointer items-center rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-[#111111] transition hover:border-[#4B98CB]">
-                Subir archivo
+            {activeModeByKind[item.kind] === null ? (
+              <div className="flex flex-wrap gap-2">
+                <PrimaryButton
+                  className="!h-10 !rounded-xl !border-[#4B98CB] !bg-[#4B98CB] !px-4 !py-2 !text-xs hover:!border-[#3E86B6] hover:!bg-[#3E86B6]"
+                  onClick={() => void startCamera(item.kind)}
+                >
+                  Tomar foto
+                </PrimaryButton>
+                <PrimaryButton
+                  className="!h-10 !rounded-xl !border-gray-300 !bg-white !px-4 !py-2 !text-xs !text-[#111111] hover:!border-[#4B98CB]"
+                  onClick={() => openUpload(item.kind)}
+                >
+                  Subir archivo
+                </PrimaryButton>
+              </div>
+            ) : null}
+            {activeModeByKind[item.kind] === 'upload' ? (
+              <div className="space-y-2 rounded-xl border border-ubii-border bg-white p-4">
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/jpg"
-                  className="sr-only"
+                  className="block w-full rounded-lg border border-ubii-border bg-ubii-light px-3 py-2 text-sm text-ubii-black file:mr-3 file:rounded-md file:border-0 file:bg-ubii-blue file:px-3 file:py-1.5 file:text-white"
                   onChange={(event) => {
                     const file = event.target.files?.[0];
                     if (!file) return;
                     assignItem(item.kind, { blob: file, file, previewUrl: URL.createObjectURL(file) });
+                    setActiveModeByKind((prev) => ({ ...prev, [item.kind]: null }));
                     event.currentTarget.value = '';
                   }}
                 />
-              </label>
-            </div>
+                <PrimaryButton
+                  className="!h-10 !rounded-xl !border-gray-300 !bg-white !px-4 !py-2 !text-sm !text-[#111111] hover:!border-[#4B98CB]"
+                  onClick={() => cancelMode(item.kind)}
+                >
+                  Cancelar
+                </PrimaryButton>
+              </div>
+            ) : null}
             {activeCamera === item.kind ? (
               <div className="space-y-3 rounded-xl border border-ubii-border bg-white p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Cámara activa</p>
@@ -274,7 +312,7 @@ export function CommerceImages({ onChange, highlightMissing = false, highlightNo
                   </PrimaryButton>
                   <PrimaryButton
                     className="!h-10 !rounded-xl !border-gray-300 !bg-white !px-4 !py-2 !text-sm !text-[#111111] hover:!border-[#4B98CB]"
-                    onClick={stopCamera}
+                    onClick={() => cancelMode(item.kind)}
                   >
                     Cancelar
                   </PrimaryButton>
