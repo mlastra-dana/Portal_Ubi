@@ -1,0 +1,174 @@
+import type { DocKind } from '../types/recaudos';
+
+type LambdaDocumentFields = {
+  documentType?: string;
+  documentNumber?: string;
+  givenNames?: string;
+  surnames?: string;
+  companyName?: string;
+  nombres?: string;
+  apellidos?: string;
+  cedula?: string;
+  rif?: string;
+};
+
+type LambdaConfidence = {
+  documentNumber?: number;
+  givenNames?: number;
+  surnames?: number;
+  companyName?: number;
+  ocrAverage?: number;
+};
+
+type LambdaFlatResponse = {
+  expectedDocumentType?: string;
+  documentTypeDetected?: string;
+  isValidForSlot?: boolean;
+  slotValidationReason?: string;
+  fileKindDetected?: string;
+  isExtractionPerformed?: boolean;
+  fields?: LambdaDocumentFields;
+  confidence?: LambdaConfidence;
+  warnings?: string[];
+  message?: string;
+  error?: string;
+};
+
+type LambdaWrappedResponse = {
+  statusCode?: number;
+  headers?: Record<string, string>;
+  body?: string | LambdaFlatResponse;
+};
+
+export type DocumentValidationResult = {
+  expectedDocumentType: string;
+  documentTypeDetected: string;
+  isValidForSlot: boolean;
+  slotValidationReason: string;
+  fileKindDetected: string;
+  isExtractionPerformed: boolean;
+  fields: Required<Pick<LambdaDocumentFields, 'documentType' | 'documentNumber' | 'givenNames' | 'surnames' | 'companyName' | 'nombres' | 'apellidos' | 'cedula' | 'rif'>>;
+  confidence: Required<Pick<LambdaConfidence, 'documentNumber' | 'givenNames' | 'surnames' | 'companyName' | 'ocrAverage'>>;
+  warnings: string[];
+};
+
+const LAMBDA_URL = (import.meta.env.VITE_IDP_LAMBDA_URL ?? '').trim();
+
+const mapExpectedType = (docKind: DocKind): string => {
+  if (docKind === 'RIF') return 'RIF';
+  if (docKind === 'ACTA' || docKind === 'REGISTRO' || docKind === 'ACTA_REGISTRO') return 'ACTA_CONSTITUTIVA';
+  return 'CEDULA';
+};
+
+const toBase64 = async (file: File): Promise<string> =>
+  await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? '');
+      const payload = result.includes(',') ? result.split(',')[1] : result;
+      resolve(payload);
+    };
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo para validación.'));
+    reader.readAsDataURL(file);
+  });
+
+const unwrapLambdaPayload = (payload: unknown): LambdaFlatResponse => {
+  if (!payload || typeof payload !== 'object') return {};
+
+  const maybeWrapped = payload as LambdaWrappedResponse;
+  if (maybeWrapped.body !== undefined) {
+    if (typeof maybeWrapped.body === 'string') {
+      try {
+        const parsed = JSON.parse(maybeWrapped.body) as LambdaFlatResponse;
+        return parsed;
+      } catch {
+        return {};
+      }
+    }
+    if (maybeWrapped.body && typeof maybeWrapped.body === 'object') {
+      return maybeWrapped.body as LambdaFlatResponse;
+    }
+  }
+
+  return payload as LambdaFlatResponse;
+};
+
+const toSafeResult = (payload: LambdaFlatResponse, expectedDocumentType: string): DocumentValidationResult => {
+  const fields = payload.fields ?? {};
+  const confidence = payload.confidence ?? {};
+
+  return {
+    expectedDocumentType: payload.expectedDocumentType ?? expectedDocumentType,
+    documentTypeDetected: payload.documentTypeDetected ?? 'DESCONOCIDO',
+    isValidForSlot: Boolean(payload.isValidForSlot),
+    slotValidationReason: payload.slotValidationReason ?? payload.message ?? 'Validación procesada.',
+    fileKindDetected: payload.fileKindDetected ?? 'desconocido',
+    isExtractionPerformed: Boolean(payload.isExtractionPerformed),
+    fields: {
+      documentType: fields.documentType ?? '',
+      documentNumber: fields.documentNumber ?? '',
+      givenNames: fields.givenNames ?? '',
+      surnames: fields.surnames ?? '',
+      companyName: fields.companyName ?? '',
+      nombres: fields.nombres ?? '',
+      apellidos: fields.apellidos ?? '',
+      cedula: fields.cedula ?? '',
+      rif: fields.rif ?? ''
+    },
+    confidence: {
+      documentNumber: confidence.documentNumber ?? 0.25,
+      givenNames: confidence.givenNames ?? 0.25,
+      surnames: confidence.surnames ?? 0.25,
+      companyName: confidence.companyName ?? 0.25,
+      ocrAverage: confidence.ocrAverage ?? 0.0
+    },
+    warnings: Array.isArray(payload.warnings) ? payload.warnings : payload.error ? [payload.error] : []
+  };
+};
+
+export const lambdaValidationEnabled = (): boolean => Boolean(LAMBDA_URL);
+
+export async function validateDocumentWithLambda(file: File, docKind: DocKind): Promise<DocumentValidationResult> {
+  if (!LAMBDA_URL) {
+    throw new Error('No está configurado VITE_IDP_LAMBDA_URL en el frontend.');
+  }
+
+  const expectedDocumentType = mapExpectedType(docKind);
+  const fileBase64 = await toBase64(file);
+  const contentType = file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const response = await fetch(LAMBDA_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fileBase64,
+        fileName: file.name,
+        contentType,
+        expectedDocumentType
+      }),
+      signal: controller.signal
+    });
+
+    const text = await response.text();
+    let rawPayload: unknown = {};
+    try {
+      rawPayload = JSON.parse(text);
+    } catch {
+      rawPayload = {};
+    }
+
+    const flat = unwrapLambdaPayload(rawPayload);
+    if (!response.ok) {
+      const message = flat.error || flat.message || `Error HTTP ${response.status}`;
+      throw new Error(message);
+    }
+
+    return toSafeResult(flat, expectedDocumentType);
+  } finally {
+    clearTimeout(timeout);
+  }
+}

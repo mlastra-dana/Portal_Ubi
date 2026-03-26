@@ -61,10 +61,27 @@ def safe_json_response(status_code: int, payload: Dict) -> Dict:
 def parse_event_json(event: Dict) -> Dict:
     body = event.get("body", "")
     if event.get("isBase64Encoded"):
-        body = base64.b64decode(body).decode("utf-8")
+        try:
+            body = base64.b64decode(body).decode("utf-8")
+        except Exception:
+            # Si body es un archivo binario/base64 directo y no JSON UTF-8,
+            # lo exponemos como imagen para flujo de compatibilidad.
+            return {"frontImageBase64": event.get("body", "")}
     if isinstance(body, str):
-        return json.loads(body or "{}")
+        try:
+            return json.loads(body or "{}")
+        except json.JSONDecodeError:
+            # Compatibilidad para pruebas donde body llega como base64 crudo.
+            return {"frontImageBase64": body}
     return body or {}
+
+
+def parse_image_b64(image_b64: str) -> bytes:
+    cleaned = (image_b64 or "").strip()
+    if "," in cleaned:
+        cleaned = cleaned.split(",", 1)[1]
+    cleaned = cleaned.replace(" ", "+")
+    return base64.b64decode(cleaned)
 
 
 def clean_person_text(value: str) -> str:
@@ -260,11 +277,12 @@ def lambda_handler(event, context):
 
     try:
         data = parse_event_json(event)
-        front_b64 = data.get("frontImageBase64")
+        # Aceptamos alias para distintas pruebas/manuales en Lambda Console.
+        front_b64 = data.get("frontImageBase64") or data.get("fileBase64")
         if not front_b64:
-            return safe_json_response(400, {"message": "frontImageBase64 es requerido"})
+            return safe_json_response(400, {"message": "frontImageBase64 (o fileBase64) es requerido"})
 
-        image_bytes = base64.b64decode(front_b64)
+        image_bytes = parse_image_b64(front_b64)
         lines, confs = textract_lines_from_image(image_bytes)
         joined = "\n".join(lines)
 
@@ -313,4 +331,3 @@ def lambda_handler(event, context):
         )
     except Exception as exc:
         return safe_json_response(500, {"message": "Error procesando documento", "error": str(exc)})
-
