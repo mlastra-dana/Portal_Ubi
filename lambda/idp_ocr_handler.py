@@ -2,6 +2,7 @@ import base64
 import json
 import re
 import unicodedata
+from datetime import date, datetime
 from typing import Dict, List, Optional, Tuple
 
 import boto3
@@ -43,6 +44,7 @@ APELLIDO_LABEL = re.compile(r"APELL|APELID|PELLID|ELLID|AVEL", re.IGNORECASE)
 NOMBRE_LABEL = re.compile(r"NOMB|NOMBR|NOMER|NOME|N0MB|NOM8|VOVER|VOBER|VOWER", re.IGNORECASE)
 CEDULA_RE = re.compile(r"\b([VE])\s*[-.]?\s*(\d(?:[\d.\s-]{5,12}\d))\b", re.IGNORECASE)
 RIF_RE = re.compile(r"\b([JGVEP])\s*[-.]?\s*(\d(?:[\d.\s-]{7,12}\d))\b", re.IGNORECASE)
+DATE_RE = re.compile(r"\b(\d{2})[/-](\d{2})[/-](\d{4})\b")
 
 
 def normalize_upper(value: str) -> str:
@@ -270,6 +272,48 @@ def extract_identity_from_rif(lines: List[str], joined: str) -> Dict[str, Option
     }
 
 
+def _parse_ddmmyyyy(text: str) -> Optional[date]:
+    m = DATE_RE.search(text or "")
+    if not m:
+        return None
+    dd, mm, yyyy = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    try:
+        return datetime(yyyy, mm, dd).date()
+    except ValueError:
+        return None
+
+
+def detect_document_expiration_date(lines: List[str]) -> Optional[date]:
+    """
+    Busca fecha de vencimiento para documentos (RIF/CEDULA).
+    SOLO usa fechas cercanas a keywords de vencimiento para evitar confundir
+    con fecha de nacimiento o expedición.
+    """
+    keyed_candidates: List[date] = []
+
+    for i, line in enumerate(lines):
+        upper = normalize_upper(line)
+        line_date = _parse_ddmmyyyy(line)
+
+        has_expiry_keyword = any(
+            k in upper for k in ("VENC", "VENCE", "VIGENCIA", "CADUC")
+        )
+
+        if has_expiry_keyword:
+            if line_date:
+                keyed_candidates.append(line_date)
+            if i + 1 < len(lines):
+                next_date = _parse_ddmmyyyy(lines[i + 1])
+                if next_date:
+                    keyed_candidates.append(next_date)
+
+    if keyed_candidates:
+        # En la mayoría de formatos, la fecha de vencimiento es la más futura.
+        return max(keyed_candidates)
+
+    return None
+
+
 def lambda_handler(event, context):
     method = (event.get("requestContext", {}).get("http", {}).get("method") or "").upper()
     if method == "OPTIONS":
@@ -296,6 +340,19 @@ def lambda_handler(event, context):
             warnings.append("No se pudieron extraer apellidos con confianza.")
         if not extracted.get("documentNumber"):
             warnings.append("No se pudo extraer numero de documento con confianza.")
+
+        if doc_type in ("RIF", "CEDULA"):
+            expiry = detect_document_expiration_date(lines)
+            if expiry:
+                today = date.today()
+                days_left = (expiry - today).days
+                doc_label = "RIF" if doc_type == "RIF" else "Cédula"
+                if days_left < 0:
+                    warnings.append(f"{doc_label} vencido (venció el {expiry.strftime('%d/%m/%Y')}).")
+                elif days_left <= 183:
+                    warnings.append(
+                        f"{doc_label} próximo a vencer (vence el {expiry.strftime('%d/%m/%Y')}, en {days_left} días)."
+                    )
 
         avg_conf = (sum(confs) / len(confs) / 100.0) if confs else 0.0
         if avg_conf < 0.70:

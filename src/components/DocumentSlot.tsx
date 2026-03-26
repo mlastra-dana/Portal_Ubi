@@ -17,6 +17,14 @@ const ACCEPT = '.pdf,image/png,image/jpeg,image/jpg';
 
 const emptyFields = { nombres: null, numeroId: null, fechaVencimiento: null };
 
+const stripNameLabels = (value?: string): string => {
+  if (!value) return '';
+  return value
+    .replace(/\b(APELLIDOS?|NOMBRES?)\b\s*[:\-]?\s*/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
 const getValidationAlertType = (status?: 'VALIDO' | 'REVISAR', message?: string): 'success' | 'warning' | 'error' | null => {
   if (status === 'VALIDO') return 'success';
   if (status !== 'REVISAR') return null;
@@ -121,12 +129,20 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
         ''
       ).trim();
 
-      const nombres = (
+      const nombresRaw = (
         backend.fields.nombres ||
         backend.fields.givenNames ||
         backend.fields.companyName ||
         ''
       ).trim();
+      const apellidosRaw = (
+        backend.fields.apellidos ||
+        backend.fields.surnames ||
+        ''
+      ).trim();
+      const nombres = stripNameLabels(nombresRaw);
+      const apellidos = stripNameLabels(apellidosRaw);
+      const nombreMostrable = [nombres, apellidos].filter(Boolean).join(' ').trim();
 
       const validationStatus: 'VALIDO' | 'REVISAR' = backend.isValidForSlot ? 'VALIDO' : 'REVISAR';
       const validationMessage = backend.slotValidationReason;
@@ -139,10 +155,10 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
           docKind,
           validationMessage,
           {
-            nombres: backend.fields.nombres,
-            apellidos: backend.fields.apellidos,
-            givenNames: backend.fields.givenNames,
-            surnames: backend.fields.surnames,
+            nombres,
+            apellidos,
+            givenNames: nombres,
+            surnames: apellidos,
             companyName: backend.fields.companyName,
             numeroId
           },
@@ -150,7 +166,7 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
         ),
         confidence: Math.round((backend.confidence.ocrAverage ?? 0) * 100),
         fields: {
-          nombres: nombres || null,
+          nombres: (docKind === 'RIF' ? (backend.fields.companyName || nombresRaw) : nombreMostrable || nombres) || null,
           numeroId: numeroId || null,
           fechaVencimiento: null
         },
