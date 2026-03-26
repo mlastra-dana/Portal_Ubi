@@ -42,11 +42,9 @@ const formatSlotValidationMessage = (status?: 'VALIDO' | 'REVISAR', backendMessa
 
 const buildValidationSummary = (
   docKind: DocKind,
-  validationReason: string,
   fieldValues: { nombres?: string; apellidos?: string; givenNames?: string; surnames?: string; companyName?: string; numeroId?: string },
-  warnings: string[]
 ): string => {
-  const lines: string[] = [validationReason];
+  const lines: string[] = [];
 
   const nombres = (fieldValues.nombres ?? fieldValues.givenNames ?? '').trim();
   const apellidos = (fieldValues.apellidos ?? fieldValues.surnames ?? '').trim();
@@ -56,21 +54,19 @@ const buildValidationSummary = (
   const nombreCompleto = [nombres, apellidos].filter(Boolean).join(' ').trim();
 
   if ((docKind === 'CEDULA' || docKind === 'CEDULA_REPRESENTANTE') && nombreCompleto) {
-    lines.push(`Nombre detectado: ${nombreCompleto}`);
+    lines.push(`Nombre: ${nombreCompleto}`);
   }
 
   if (docKind === 'RIF' && companyName) {
-    lines.push(`Razón social detectada: ${companyName}`);
+    lines.push(`Razón social: ${companyName}`);
   }
 
   if (numeroId) {
-    lines.push(`Número detectado: ${numeroId}`);
+    lines.push(`Número: ${numeroId}`);
   }
 
-  if (warnings.length > 0) {
-    lines.push('');
-    lines.push('Advertencias:');
-    warnings.forEach((warning) => lines.push(`- ${warning}`));
+  if (lines.length === 0) {
+    lines.push('No se detectaron datos relevantes para mostrar.');
   }
 
   return lines.join('\n').trim();
@@ -153,7 +149,6 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
         rawText: '',
         ocrDisplayText: buildValidationSummary(
           docKind,
-          validationMessage,
           {
             nombres,
             apellidos,
@@ -161,8 +156,7 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
             surnames: apellidos,
             companyName: backend.fields.companyName,
             numeroId
-          },
-          backend.warnings
+          }
         ),
         confidence: Math.round((backend.confidence.ocrAverage ?? 0) * 100),
         fields: {
@@ -311,7 +305,7 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
                 {result.parseWarning ? <AlertBanner type="warning">{result.parseWarning}</AlertBanner> : null}
 
                 <details className="rounded-lg border border-ubii-border bg-white p-3">
-                  <summary className="cursor-pointer text-sm font-semibold text-ubii-blue">Ver detalle técnico de validación</summary>
+                  <summary className="cursor-pointer text-sm font-semibold text-ubii-blue">Ver datos extraídos del documento</summary>
                   <pre className="mt-2 whitespace-pre-wrap text-xs text-gray-700">{result.ocrDisplayText || 'Sin datos detectados.'}</pre>
                 </details>
               </div>
