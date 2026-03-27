@@ -35,8 +35,38 @@ const stripNameLabels = (value?: string): string => {
   if (!value) return '';
   return value
     .replace(/\b(APELLIDOS?|NOMBRES?)\b\s*[:\-]?\s*/gi, ' ')
+    .replace(/\b(EDO|CIVIL|CASAD[AO]|SOLTER[AO]|VIUD[AO]|DIVORCIAD[AO]|UNION|LIBRE)\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+};
+
+const extractNamePartsFromPreview = (preview?: string): { nombres: string; apellidos: string } => {
+  if (!preview?.trim()) return { nombres: '', apellidos: '' };
+
+  const lines = preview
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  let nombres = '';
+  let apellidos = '';
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!apellidos && /\bAPELL/i.test(line)) {
+      const inline = line.replace(/.*\bAPELL\w*\s*[:\-]?\s*/i, '').trim();
+      const next = lines[i + 1]?.trim() ?? '';
+      apellidos = inline || next;
+    }
+    if (!nombres && /\bNOMB/i.test(line)) {
+      const inline = line.replace(/.*\bNOMB\w*\s*[:\-]?\s*/i, '').trim();
+      const next = lines[i + 1]?.trim() ?? '';
+      nombres = inline || next;
+    }
+    if (nombres && apellidos) break;
+  }
+
+  return { nombres, apellidos };
 };
 
 const getValidationAlertType = (status?: 'VALIDO' | 'REVISAR', message?: string): 'success' | 'warning' | 'error' | null => {
@@ -155,15 +185,19 @@ export function DocumentSlot({
         ''
       ).trim();
 
+      const fallbackFromPreview = extractNamePartsFromPreview(backend.ocrTextPreview);
+
       const nombresRaw = (
         backend.fields.nombres ||
         backend.fields.givenNames ||
+        fallbackFromPreview.nombres ||
         companyName ||
         ''
       ).trim();
       const apellidosRaw = (
         backend.fields.apellidos ||
         backend.fields.surnames ||
+        fallbackFromPreview.apellidos ||
         ''
       ).trim();
       const nombres = stripNameLabels(nombresRaw);
