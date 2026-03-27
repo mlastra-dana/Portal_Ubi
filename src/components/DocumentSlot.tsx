@@ -142,16 +142,23 @@ export function DocumentSlot({
       setItem({ progress: 90 });
 
       const numeroId = (
-        backend.fields.documentNumber ||
+        backend.fields.numeroIdentificacion ||
         backend.fields.cedula ||
         backend.fields.rif ||
+        backend.fields.documentNumber ||
+        ''
+      ).trim();
+
+      const companyName = (
+        backend.fields.razonSocial ||
+        backend.fields.companyName ||
         ''
       ).trim();
 
       const nombresRaw = (
         backend.fields.nombres ||
         backend.fields.givenNames ||
-        backend.fields.companyName ||
+        companyName ||
         ''
       ).trim();
       const apellidosRaw = (
@@ -185,19 +192,23 @@ export function DocumentSlot({
             apellidos,
             givenNames: nombres,
             surnames: apellidos,
-            companyName: backend.fields.companyName,
+            companyName,
             numeroId
           }
         ),
         confidence: Math.round((backend.confidence.ocrAverage ?? 0) * 100),
         fields: {
-          nombres: (docKind === 'RIF' ? (backend.fields.companyName || nombresRaw) : nombreMostrable || nombres) || null,
+          nombres: (docKind === 'RIF' ? (companyName || nombresRaw) : nombreMostrable || nombres) || null,
           numeroId: numeroId || null,
-          fechaVencimiento: null
+          fechaVencimiento: backend.fields.fechaVencimiento || null
         },
         validationStatus,
         validationMessage,
-        parseWarning: parseWarnings.length > 0 ? parseWarnings.join(' | ') : undefined
+        parseWarning: (backend.expiryAlert && !parseWarnings.length)
+          ? 'Documento próximo a vencer.'
+          : parseWarnings.length > 0
+            ? parseWarnings.join(' | ')
+            : undefined
       });
     } catch (error) {
       setItem({

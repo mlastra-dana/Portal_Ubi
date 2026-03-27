@@ -13,16 +13,16 @@ import boto3
 textract = boto3.client("textract")
 s3 = boto3.client("s3")
 
-# Requerido para PDF (Textract async)
+# Mantengo tus variables de entorno exactamente iguales
 DOCUMENT_OCR_BUCKET = os.getenv("DOCUMENT_OCR_BUCKET", "").strip()
 DOCUMENT_OCR_POLL_SECONDS = float(os.getenv("DOCUMENT_OCR_POLL_SECONDS", "1.5"))
 DOCUMENT_OCR_MAX_WAIT_SECONDS = int(os.getenv("DOCUMENT_OCR_MAX_WAIT_SECONDS", "180"))
 
-# Recomendación: manejar CORS en Lambda Function URL para evitar duplicados.
 RESPONSE_HEADERS = {
     "Content-Type": "application/json"
 }
 
+# Patrones conservadores
 CEDULA_RE = re.compile(r"\b([VE])\s*[-.]?\s*(\d(?:[\d.\s-]{5,12}\d))\b", re.IGNORECASE)
 RIF_RE = re.compile(r"\b([JGVEP])\s*[-.]?\s*(\d(?:[\d.\s-]{7,12}\d))\b", re.IGNORECASE)
 DATE_RE = re.compile(r"\b(\d{2})[/-](\d{2})[/-](\d{4})\b")
@@ -32,18 +32,26 @@ NOISE_WORDS = {
     "FIRMA", "TITULAR", "DIRECTOR", "NACIONALIDAD", "VENEZOLANO",
     "EXPEDICION", "VENCIMIENTO", "FECHA", "NACIMIENTO", "CASADA", "SOLTERA",
     "CONTRIBUYENTE", "SENIAT", "REGISTRO", "MERCANTIL", "ACTA", "CONSTITUTIVA",
-    "NOMBRES", "NOMBRE", "APELLIDOS", "APELLIDO", "FUND", "AUTORIZADA"
+    "NOMBRES", "NOMBRE", "APELLIDOS", "APELLIDO", "FUND", "AUTORIZADA",
+    "NUMERO", "NÚMERO", "DOC", "DOCUMENTO"
 }
 TRAILING_GARBAGE = {"NA", "N", "A", "EA", "ER", "OD", "DI", "RR", "ZN"}
-CONNECTORS = {"DE", "DEL", "LA", "LAS", "LOS", "DA", "DAS", "DO", "DOS"}
+CONNECTORS = {"DE", "DEL", "LA", "LAS", "LOS", "DA", "DAS", "DO", "DOS", "Y"}
 
 APELLIDO_LABEL = re.compile(r"APELL|APELID|PELLID|ELLID|AVEL", re.IGNORECASE)
 NOMBRE_LABEL = re.compile(r"NOMB|NOMBR|NOMER|NOME|N0MB|NOM8|VOVER|VOBER|VOWER", re.IGNORECASE)
 
 
 def normalize_upper(value: str) -> str:
-    no_acc = "".join(c for c in unicodedata.normalize("NFD", value) if unicodedata.category(c) != "Mn")
+    no_acc = "".join(
+        c for c in unicodedata.normalize("NFD", value or "")
+        if unicodedata.category(c) != "Mn"
+    )
     return no_acc.upper().strip()
+
+
+def normalize_spaces(value: str) -> str:
+    return re.sub(r"\s+", " ", value or "").strip()
 
 
 def normalize_doc_type(value: str) -> str:
@@ -119,7 +127,7 @@ def textract_lines_from_image_bytes(image_bytes: bytes) -> Tuple[List[str], List
     lines, confs = [], []
     for block in response.get("Blocks", []):
         if block.get("BlockType") == "LINE":
-            text = (block.get("Text") or "").strip()
+            text = normalize_spaces(block.get("Text") or "")
             if text:
                 lines.append(text)
                 confs.append(float(block.get("Confidence", 0.0)))
@@ -162,7 +170,7 @@ def textract_lines_from_pdf_bytes(pdf_bytes: bytes) -> Tuple[List[str], List[flo
 
             for block in page.get("Blocks", []):
                 if block.get("BlockType") == "LINE":
-                    text = (block.get("Text") or "").strip()
+                    text = normalize_spaces(block.get("Text") or "")
                     if text:
                         lines.append(text)
                         confs.append(float(block.get("Confidence", 0.0)))
@@ -187,19 +195,49 @@ def textract_lines(file_bytes: bytes, file_kind: str) -> Tuple[List[str], List[f
 
 def detect_document_type(text: str) -> str:
     normalized = normalize_upper(text)
-    if "ACTA CONSTITUTIVA" in normalized or "REGISTRO MERCANTIL" in normalized:
+
+    acta_signals = [
+        "ACTA CONSTITUTIVA",
+        "DOCUMENTO CONSTITUTIVO",
+        "REGISTRO MERCANTIL",
+        "PROTOCOLO",
+        "TOMO",
+        "ASAMBLEA",
+        "ESTATUTOS",
+    ]
+    rif_signals = [
+        "RIF",
+        "SENIAT",
+        "CONTRIBUYENTE",
+        "REGISTRO DE INFORMACION FISCAL",
+    ]
+    cedula_signals = [
+        "CEDULA",
+        "CÉDULA",
+        "IDENTIDAD",
+        "REPUBLICA BOLIVARIANA",
+    ]
+
+    if any(sig in normalized for sig in acta_signals):
         return "ACTA_CONSTITUTIVA"
-    if "RIF" in normalized or "SENIAT" in normalized or "CONTRIBUYENTE" in normalized:
+    if any(sig in normalized for sig in rif_signals):
         return "RIF"
-    if "CEDULA" in normalized or "CÉDULA" in normalized or "IDENTIDAD" in normalized:
+    if any(sig in normalized for sig in cedula_signals):
         return "CEDULA"
+
+    # refuerzo por patrón cuando el título no salió bien en OCR
+    if RIF_RE.search(normalized):
+        return "RIF"
+    if CEDULA_RE.search(normalized):
+        return "CEDULA"
+
     return "OTRO"
 
 
 def clean_person_text(value: str) -> str:
     text = re.sub(r"\b(NA\)|N\)|DIRECTOR|TITULAR|FIRMA|AUTORIZADA)\b.*$", " ", value, flags=re.IGNORECASE)
     text = re.sub(r"[^A-Za-zÁÉÍÓÚÑáéíóúñ\s]", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
+    text = normalize_spaces(text)
 
     tokens = []
     for t in text.split():
@@ -217,6 +255,7 @@ def clean_person_text(value: str) -> str:
             tokens.pop()
             continue
         break
+
     while tokens and normalize_upper(tokens[-1]) in CONNECTORS:
         tokens.pop()
 
@@ -227,12 +266,13 @@ def strip_name_label(line: str, label_kind: str) -> str:
     if label_kind == "surname":
         label_match = re.search(r"\b(APELLIDOS?|APELIDOS?|PELLID|ELLID|AVEL)\b", line, flags=re.IGNORECASE)
         if label_match:
-            tail = line[label_match.end() :]
+            tail = line[label_match.end():]
             return re.sub(r"^\s*[:\-]?\s*", "", tail).strip()
         return line.strip()
+
     label_match = re.search(r"\b(N\w{0,4}OMB\w*|NOMER\w*|NOME\w*|VOW?ER\w*|N0MB\w*|NOM8\w*)\b", line, flags=re.IGNORECASE)
     if label_match:
-        tail = line[label_match.end() :]
+        tail = line[label_match.end():]
         return re.sub(r"^\s*[:\-]?\s*", "", tail).strip()
     return line.strip()
 
@@ -259,8 +299,6 @@ def score_person_candidate(value: str) -> int:
 def pick_best_person_candidate(candidates: List[str]) -> str:
     scored = []
     for c in candidates:
-        if not c:
-            continue
         cleaned = clean_person_text(c)
         score = score_person_candidate(cleaned)
         if score >= 0:
@@ -278,7 +316,7 @@ def is_likely_ddmmyyyy(digits: str) -> bool:
 
 def normalize_doc_number(raw: str, expected: str) -> Optional[str]:
     compact = (
-        raw.upper()
+        (raw or "").upper()
         .replace(" ", "")
         .replace(".", "")
         .replace("-", "")
@@ -299,21 +337,6 @@ def normalize_doc_number(raw: str, expected: str) -> Optional[str]:
             if is_likely_ddmmyyyy(compact):
                 return None
             return "V" + compact
-        # fallback tolerante para OCR ruidoso:
-        # permite entradas como "V 15.504.607 003", quedándose con el bloque principal.
-        rough = raw.upper().replace("O", "0").replace("Q", "0").replace("I", "1").replace("L", "1").replace("S", "5").replace("B", "8")
-        prefix_match = re.search(r"[VE]", rough)
-        prefix = prefix_match.group(0) if prefix_match else "V"
-        chunks = re.findall(r"\d+", rough)
-        if chunks:
-            for end in range(len(chunks), 0, -1):
-                digits = "".join(chunks[:end])
-                if not re.fullmatch(r"\d{6,10}", digits):
-                    continue
-                # Evita tomar fechas OCR-izadas como número de cédula (ddmmyyyy).
-                if is_likely_ddmmyyyy(digits):
-                    continue
-                return prefix + digits
         return None
 
     if expected == "RIF":
@@ -325,32 +348,24 @@ def normalize_doc_number(raw: str, expected: str) -> Optional[str]:
 
 
 def build_official_signature_noise(lines: List[str]) -> List[str]:
-    """
-    Detecta nombres de firma/director para removerlos cuando OCR los pega
-    al final de nombres/apellidos de la cédula.
-    """
     noise = []
     for i, line in enumerate(lines):
         up = normalize_upper(line)
         if "DIRECTOR" in up or "AUTORIZADA" in up:
-            # misma línea sin palabra clave
             same = re.sub(r"\b(DIRECTOR|AUTORIZADA)\b", " ", line, flags=re.IGNORECASE)
             same = fix_person_field(same)
             if score_person_candidate(same) >= 0:
                 noise.append(same)
 
-            # línea anterior puede contener nombre de firma
             if i > 0:
                 prev = fix_person_field(lines[i - 1])
                 if score_person_candidate(prev) >= 0:
                     noise.append(prev)
 
-            # línea actual completa también puede venir como "Juan Dugarte Director"
             cleaned_line = fix_person_field(line)
             if score_person_candidate(cleaned_line) >= 0:
                 noise.append(cleaned_line)
 
-    # dedupe
     dedup = []
     seen = set()
     for n in noise:
@@ -362,17 +377,15 @@ def build_official_signature_noise(lines: List[str]) -> List[str]:
 
 
 def remove_official_noise(candidate: str, official_noise: List[str]) -> str:
-    out = candidate.strip()
+    out = (candidate or "").strip()
     up_out = normalize_upper(out)
 
     for n in official_noise:
         up_n = normalize_upper(n)
         if not up_n:
             continue
-
-        # si el candidato termina con nombre de director/firma, lo recorta
         if up_out.endswith(" " + up_n):
-            out = out[: len(out) - len(n) - 1].strip()
+            out = out[:len(out) - len(n) - 1].strip()
             up_out = normalize_upper(out)
         elif up_out == up_n:
             out = ""
@@ -411,7 +424,6 @@ def extract_identity_from_cedula(lines: List[str], joined: str) -> Dict[str, Opt
                 if score_person_candidate(alt) >= 0:
                     names = alt
 
-    # fallback conservador
     if not names or not surnames:
         conservative_candidates = []
         for line in lines:
@@ -431,22 +443,28 @@ def extract_identity_from_cedula(lines: List[str], joined: str) -> Dict[str, Opt
                     surnames = c
                     break
 
+    # extracción de número MUCHO más conservadora
     doc_num = None
+
     m = CEDULA_RE.search(joined)
     if m:
         doc_num = normalize_doc_number(f"{m.group(1)}{m.group(2)}", "CEDULA")
+
     if not doc_num:
-        line_hit = re.search(r"\b([VE])\s*[\.:-]?\s*(\d[\d.\s-]{5,12}\d)\b", joined, flags=re.IGNORECASE)
-        if line_hit:
-            doc_num = normalize_doc_number(f"{line_hit.group(1)}{line_hit.group(2)}", "CEDULA")
+        for line in lines:
+            m_line = CEDULA_RE.search(line)
+            if m_line:
+                doc_num = normalize_doc_number(f"{m_line.group(1)}{m_line.group(2)}", "CEDULA")
+                if doc_num:
+                    break
+
+    # fallback tolerante, pero solo si hay prefijo V/E cerca
     if not doc_num:
-        fallback = re.search(r"\b\d{6,10}\b", joined)
-        if fallback:
-            doc_num = normalize_doc_number(fallback.group(0), "CEDULA")
-    if not doc_num:
-        fallback_grouped = re.search(r"\b\d(?:[\d.\s-]{5,16}\d)\b", joined)
-        if fallback_grouped:
-            doc_num = normalize_doc_number(fallback_grouped.group(0), "CEDULA")
+        rough_hits = re.findall(r"\b[VE]\s*[-.]?\s*\d[\d.\s-]{5,12}\d\b", joined, flags=re.IGNORECASE)
+        for hit in rough_hits:
+            doc_num = normalize_doc_number(hit, "CEDULA")
+            if doc_num:
+                break
 
     return {
         "documentType": "CEDULA",
@@ -459,9 +477,18 @@ def extract_identity_from_cedula(lines: List[str], joined: str) -> Dict[str, Opt
 
 def extract_identity_from_rif(lines: List[str], joined: str) -> Dict[str, Optional[str]]:
     rif = None
+
     m = RIF_RE.search(joined)
     if m:
         rif = normalize_doc_number(f"{m.group(1)}{m.group(2)}", "RIF")
+
+    if not rif:
+        for line in lines:
+            m_line = RIF_RE.search(line)
+            if m_line:
+                rif = normalize_doc_number(f"{m_line.group(1)}{m_line.group(2)}", "RIF")
+                if rif:
+                    break
 
     company_name = ""
     for i, line in enumerate(lines):
@@ -483,7 +510,7 @@ def extract_identity_from_rif(lines: List[str], joined: str) -> Dict[str, Option
                 continue
             if len(cleaned.split()) < 2:
                 continue
-            if any(x in upper for x in ["SENIAT", "RIF", "FECHA", "DOMICILIO", "CONTRIBUYENTE"]):
+            if any(x in upper for x in ["SENIAT", "RIF", "FECHA", "DOMICILIO", "CONTRIBUYENTE", "CERTIFICADO"]):
                 continue
             candidates.append(cleaned)
         company_name = pick_best_person_candidate(candidates)
@@ -541,7 +568,67 @@ def is_valid_for_slot(expected_type: str, detected_type: str) -> Tuple[bool, str
     if exp == det:
         return True, f"Documento detectado ({det}) coincide con el esperado ({exp})."
 
-    return False, f"Documento detectado ({det}) no coincide con el esperado ({exp})."
+    article = "un"
+    if exp == "CEDULA":
+        label = "cédula"
+        article = "una"
+    elif exp == "RIF":
+        label = "RIF"
+    elif exp == "ACTA_CONSTITUTIVA":
+        label = "acta constitutiva / registro mercantil"
+        article = "un"
+    else:
+        label = exp
+
+    return False, f"El archivo cargado no corresponde a {article} {label}."
+
+
+def build_fields_payload(extracted: Dict[str, Optional[str]], detected_type: str) -> Dict[str, str]:
+    """
+    Mantengo nombres que el frontend probablemente ya usa,
+    pero reduzco duplicados peligrosos.
+    """
+    document_number = extracted.get("documentNumber") or ""
+    given_names = extracted.get("givenNames") or ""
+    surnames = extracted.get("surnames") or ""
+    company_name = extracted.get("companyName") or ""
+
+    fields = {
+        "documentType": extracted.get("documentType") or "",
+        "documentNumber": document_number,
+        "numeroIdentificacion": document_number,
+        "givenNames": given_names,
+        "surnames": surnames,
+        "nombres": given_names,
+        "apellidos": surnames,
+        "companyName": company_name,
+        "razonSocial": company_name,
+        "fechaVencimiento": "",
+    }
+
+    # Compatibilidad hacia atrás
+    if detected_type == "CEDULA":
+        fields["cedula"] = document_number
+        fields["rif"] = ""
+    elif detected_type == "RIF":
+        fields["rif"] = document_number
+        fields["cedula"] = ""
+    else:
+        fields["cedula"] = ""
+        fields["rif"] = ""
+
+    return fields
+
+
+def build_confidence_payload(fields: Dict[str, str], avg_conf: float) -> Dict[str, float]:
+    return {
+        "documentNumber": 0.90 if fields.get("documentNumber") else 0.25,
+        "numeroIdentificacion": 0.90 if fields.get("numeroIdentificacion") else 0.25,
+        "givenNames": 0.85 if fields.get("givenNames") else 0.25,
+        "surnames": 0.85 if fields.get("surnames") else 0.25,
+        "companyName": 0.85 if fields.get("companyName") else 0.25,
+        "ocrAverage": round(avg_conf, 3),
+    }
 
 
 def lambda_handler(event, context):
@@ -580,6 +667,15 @@ def lambda_handler(event, context):
         elif detected_type == "RIF":
             extracted = extract_identity_from_rif(lines, joined)
             extraction_performed = True
+        elif detected_type == "ACTA_CONSTITUTIVA":
+            extracted = {
+                "documentType": "ACTA_CONSTITUTIVA",
+                "documentNumber": None,
+                "givenNames": None,
+                "surnames": None,
+                "companyName": None,
+            }
+            extraction_performed = False
         else:
             extracted = {
                 "documentType": detected_type,
@@ -598,48 +694,44 @@ def lambda_handler(event, context):
         if extraction_performed:
             if not extracted.get("documentNumber"):
                 warnings.append("No se pudo extraer número de documento con confianza.")
+
             if detected_type == "CEDULA":
                 if not extracted.get("givenNames"):
                     warnings.append("No se pudieron extraer nombres con confianza.")
                 if not extracted.get("surnames"):
                     warnings.append("No se pudieron extraer apellidos con confianza.")
+
             if detected_type == "RIF":
                 if not extracted.get("companyName"):
                     warnings.append("No se pudo extraer razón social con confianza.")
 
+        expiry_str = ""
+        expiry_alert = False
+
         if detected_type in ("RIF", "CEDULA"):
             expiry = detect_document_expiration_date(lines)
             if expiry:
+                expiry_str = expiry.strftime("%d/%m/%Y")
                 today = date.today()
                 days_left = (expiry - today).days
                 doc_label = "RIF" if detected_type == "RIF" else "Cédula"
                 if days_left < 0:
                     warnings.append(f"{doc_label} vencido (venció el {expiry.strftime('%d/%m/%Y')}).")
+                    expiry_alert = True
                 elif days_left <= 183:
                     warnings.append(f"{doc_label} próximo a vencer (vence el {expiry.strftime('%d/%m/%Y')}, en {days_left} días).")
+                    expiry_alert = True
 
         if avg_conf < 0.70:
             warnings.append("OCR con baja confianza general.")
 
-        fields = {
-            "documentType": extracted.get("documentType") or "",
-            "documentNumber": extracted.get("documentNumber") or "",
-            "givenNames": extracted.get("givenNames") or "",
-            "surnames": extracted.get("surnames") or "",
-            "companyName": extracted.get("companyName") or "",
-            "nombres": extracted.get("givenNames") or "",
-            "apellidos": extracted.get("surnames") or "",
-            "cedula": extracted.get("documentNumber") or "",
-            "rif": extracted.get("documentNumber") or "",
-        }
+        # dedupe warnings
+        warnings = list(dict.fromkeys(warnings))
 
-        confidence = {
-            "documentNumber": 0.90 if fields["documentNumber"] else 0.25,
-            "givenNames": 0.85 if fields["givenNames"] else 0.25,
-            "surnames": 0.85 if fields["surnames"] else 0.25,
-            "companyName": 0.85 if fields["companyName"] else 0.25,
-            "ocrAverage": round(avg_conf, 3),
-        }
+        fields = build_fields_payload(extracted, detected_type)
+        fields["fechaVencimiento"] = expiry_str
+
+        confidence = build_confidence_payload(fields, avg_conf)
 
         return safe_json_response(
             200,
@@ -653,6 +745,8 @@ def lambda_handler(event, context):
                 "fields": fields,
                 "confidence": confidence,
                 "warnings": warnings,
+                "expiryAlert": expiry_alert,
+                "ocrTextPreview": "\n".join(lines[:20]),  # útil para depurar sin devolver todo
             },
         )
 

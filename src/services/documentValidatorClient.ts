@@ -3,6 +3,9 @@ import type { DocKind } from '../types/recaudos';
 type LambdaDocumentFields = {
   documentType?: string;
   documentNumber?: string;
+  numeroIdentificacion?: string;
+  fechaVencimiento?: string;
+  razonSocial?: string;
   givenNames?: string;
   surnames?: string;
   companyName?: string;
@@ -29,6 +32,7 @@ type LambdaFlatResponse = {
   isExtractionPerformed?: boolean;
   fields?: LambdaDocumentFields;
   confidence?: LambdaConfidence;
+  expiryAlert?: boolean;
   warnings?: string[];
   message?: string;
   error?: string;
@@ -47,8 +51,14 @@ export type DocumentValidationResult = {
   slotValidationReason: string;
   fileKindDetected: string;
   isExtractionPerformed: boolean;
-  fields: Required<Pick<LambdaDocumentFields, 'documentType' | 'documentNumber' | 'givenNames' | 'surnames' | 'companyName' | 'nombres' | 'apellidos' | 'cedula' | 'rif'>>;
+  fields: Required<
+    Pick<
+      LambdaDocumentFields,
+      'documentType' | 'documentNumber' | 'numeroIdentificacion' | 'fechaVencimiento' | 'razonSocial' | 'givenNames' | 'surnames' | 'companyName' | 'nombres' | 'apellidos' | 'cedula' | 'rif'
+    >
+  >;
   confidence: Required<Pick<LambdaConfidence, 'documentNumber' | 'givenNames' | 'surnames' | 'companyName' | 'ocrAverage'>>;
+  expiryAlert: boolean;
   warnings: string[];
 };
 
@@ -107,6 +117,9 @@ const toSafeResult = (payload: LambdaFlatResponse, expectedDocumentType: string)
     fields: {
       documentType: fields.documentType ?? '',
       documentNumber: fields.documentNumber ?? '',
+      numeroIdentificacion: fields.numeroIdentificacion ?? '',
+      fechaVencimiento: fields.fechaVencimiento ?? '',
+      razonSocial: fields.razonSocial ?? '',
       givenNames: fields.givenNames ?? '',
       surnames: fields.surnames ?? '',
       companyName: fields.companyName ?? '',
@@ -122,6 +135,7 @@ const toSafeResult = (payload: LambdaFlatResponse, expectedDocumentType: string)
       companyName: confidence.companyName ?? 0.25,
       ocrAverage: confidence.ocrAverage ?? 0.0
     },
+    expiryAlert: Boolean(payload.expiryAlert),
     warnings: Array.isArray(payload.warnings) ? payload.warnings : payload.error ? [payload.error] : []
   };
 };

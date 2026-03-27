@@ -42,7 +42,12 @@ export async function extractIdentityWithIdp(result: UploadedDocumentResult): Pr
 
     const nombres = cleanNamePart(validated.fields.nombres || validated.fields.givenNames || '');
     const apellidos = cleanNamePart(validated.fields.apellidos || validated.fields.surnames || '');
-    const cedula = normalizeId(validated.fields.cedula || validated.fields.documentNumber || '');
+    const cedula = normalizeId(
+      validated.fields.numeroIdentificacion ||
+      validated.fields.cedula ||
+      validated.fields.documentNumber ||
+      ''
+    );
 
     return {
       nombres: nombres || null,
