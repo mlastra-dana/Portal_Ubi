@@ -72,7 +72,18 @@ const mapExpectedType = (docKind: DocKind): string => {
   return 'CEDULA';
 };
 
-const toBase64 = async (file: File): Promise<string> =>
+const toBase64FromArrayBuffer = async (file: File): Promise<string> => {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+};
+
+const toBase64FromFileReader = async (file: File): Promise<string> =>
   await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -83,6 +94,15 @@ const toBase64 = async (file: File): Promise<string> =>
     reader.onerror = () => reject(new Error('No se pudo leer el archivo para validación.'));
     reader.readAsDataURL(file);
   });
+
+const toBase64 = async (file: File): Promise<string> => {
+  try {
+    // Safari iOS es más estable leyendo binario directo que DataURL en archivos grandes.
+    return await toBase64FromArrayBuffer(file);
+  } catch {
+    return await toBase64FromFileReader(file);
+  }
+};
 
 const unwrapLambdaPayload = (payload: unknown): LambdaFlatResponse => {
   if (!payload || typeof payload !== 'object') return {};
