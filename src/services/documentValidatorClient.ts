@@ -128,6 +128,12 @@ const toSafeResult = (payload: LambdaFlatResponse, expectedDocumentType: string)
 
 export const lambdaValidationEnabled = (): boolean => Boolean(LAMBDA_URL);
 
+const isAbortLikeError = (error: unknown): boolean => {
+  if (error instanceof DOMException && error.name === 'AbortError') return true;
+  const message = error instanceof Error ? error.message.toLowerCase() : '';
+  return message.includes('aborted') || message.includes('aborterror');
+};
+
 export async function validateDocumentWithLambda(file: File, docKind: DocKind): Promise<DocumentValidationResult> {
   if (!LAMBDA_URL) {
     throw new Error('No está configurado VITE_IDP_LAMBDA_URL en el frontend.');
@@ -140,7 +146,7 @@ export async function validateDocumentWithLambda(file: File, docKind: DocKind): 
 
   const controller = new AbortController();
   // PDF puede tardar más por Textract asíncrono; imágenes suelen responder más rápido.
-  const requestTimeoutMs = isPdf ? 120000 : 45000;
+  const requestTimeoutMs = isPdf ? 240000 : 45000;
   const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
 
   try {
@@ -172,10 +178,10 @@ export async function validateDocumentWithLambda(file: File, docKind: DocKind): 
 
     return toSafeResult(flat, expectedDocumentType);
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
+    if (isAbortLikeError(error)) {
       throw new Error(
         isPdf
-          ? 'La validación del PDF tardó más de lo esperado. Intenta nuevamente o usa una imagen más liviana.'
+          ? 'La validación del PDF tardó más de lo esperado. Intenta nuevamente; si persiste, reduce el peso del PDF o súbelo como imagen.'
           : 'La validación tardó más de lo esperado. Intenta nuevamente.'
       );
     }

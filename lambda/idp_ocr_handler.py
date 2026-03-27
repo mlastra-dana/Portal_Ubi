@@ -16,7 +16,7 @@ s3 = boto3.client("s3")
 # Requerido para PDF (Textract async)
 DOCUMENT_OCR_BUCKET = os.getenv("DOCUMENT_OCR_BUCKET", "").strip()
 DOCUMENT_OCR_POLL_SECONDS = float(os.getenv("DOCUMENT_OCR_POLL_SECONDS", "1.5"))
-DOCUMENT_OCR_MAX_WAIT_SECONDS = int(os.getenv("DOCUMENT_OCR_MAX_WAIT_SECONDS", "90"))
+DOCUMENT_OCR_MAX_WAIT_SECONDS = int(os.getenv("DOCUMENT_OCR_MAX_WAIT_SECONDS", "180"))
 
 # Recomendación: manejar CORS en Lambda Function URL para evitar duplicados.
 RESPONSE_HEADERS = {
@@ -225,18 +225,16 @@ def clean_person_text(value: str) -> str:
 
 def strip_name_label(line: str, label_kind: str) -> str:
     if label_kind == "surname":
-        return re.sub(
-            r".*(APELL(?:IDOS?)?|APELID(?:OS?)?|PELLID|ELLID|AVEL)\s*[:\-]?\s*",
-            "",
-            line,
-            flags=re.IGNORECASE,
-        ).strip()
-    return re.sub(
-        r".*(N\w{0,4}OMB\w*|NOMER\w*|NOME\w*|VOW?ER\w*|N0MB\w*|NOM8\w*)\s*[:\-]?\s*",
-        "",
-        line,
-        flags=re.IGNORECASE,
-    ).strip()
+        label_match = re.search(r"\b(APELLIDOS?|APELIDOS?|PELLID|ELLID|AVEL)\b", line, flags=re.IGNORECASE)
+        if label_match:
+            tail = line[label_match.end() :]
+            return re.sub(r"^\s*[:\-]?\s*", "", tail).strip()
+        return line.strip()
+    label_match = re.search(r"\b(N\w{0,4}OMB\w*|NOMER\w*|NOME\w*|VOW?ER\w*|N0MB\w*|NOM8\w*)\b", line, flags=re.IGNORECASE)
+    if label_match:
+        tail = line[label_match.end() :]
+        return re.sub(r"^\s*[:\-]?\s*", "", tail).strip()
+    return line.strip()
 
 
 def fix_person_field(value: str) -> str:
@@ -271,6 +269,13 @@ def pick_best_person_candidate(candidates: List[str]) -> str:
     return scored[0][0] if scored else ""
 
 
+def is_likely_ddmmyyyy(digits: str) -> bool:
+    if not re.fullmatch(r"\d{8}", digits):
+        return False
+    dd, mm, yyyy = int(digits[:2]), int(digits[2:4]), int(digits[4:])
+    return 1 <= dd <= 31 and 1 <= mm <= 12 and 1900 <= yyyy <= 2099
+
+
 def normalize_doc_number(raw: str, expected: str) -> Optional[str]:
     compact = (
         raw.upper()
@@ -287,9 +292,28 @@ def normalize_doc_number(raw: str, expected: str) -> Optional[str]:
 
     if expected == "CEDULA":
         if re.fullmatch(r"[VE]\d{6,10}", compact):
+            if is_likely_ddmmyyyy(compact[1:]):
+                return None
             return compact
         if re.fullmatch(r"\d{6,10}", compact):
+            if is_likely_ddmmyyyy(compact):
+                return None
             return "V" + compact
+        # fallback tolerante para OCR ruidoso:
+        # permite entradas como "V 15.504.607 003", quedándose con el bloque principal.
+        rough = raw.upper().replace("O", "0").replace("Q", "0").replace("I", "1").replace("L", "1").replace("S", "5").replace("B", "8")
+        prefix_match = re.search(r"[VE]", rough)
+        prefix = prefix_match.group(0) if prefix_match else "V"
+        chunks = re.findall(r"\d+", rough)
+        if chunks:
+            for end in range(len(chunks), 0, -1):
+                digits = "".join(chunks[:end])
+                if not re.fullmatch(r"\d{6,10}", digits):
+                    continue
+                # Evita tomar fechas OCR-izadas como número de cédula (ddmmyyyy).
+                if is_likely_ddmmyyyy(digits):
+                    continue
+                return prefix + digits
         return None
 
     if expected == "RIF":
@@ -419,6 +443,10 @@ def extract_identity_from_cedula(lines: List[str], joined: str) -> Dict[str, Opt
         fallback = re.search(r"\b\d{6,10}\b", joined)
         if fallback:
             doc_num = normalize_doc_number(fallback.group(0), "CEDULA")
+    if not doc_num:
+        fallback_grouped = re.search(r"\b\d(?:[\d.\s-]{5,16}\d)\b", joined)
+        if fallback_grouped:
+            doc_num = normalize_doc_number(fallback_grouped.group(0), "CEDULA")
 
     return {
         "documentType": "CEDULA",

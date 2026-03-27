@@ -134,6 +134,25 @@ const pickBestPersonCandidate = (candidates: string[]): string => {
   return scored[0]?.candidate ?? '';
 };
 
+const stripNameLabel = (line: string, labelKind: 'surname' | 'name'): string => {
+  const pattern =
+    labelKind === 'surname'
+      ? /\b(APELLIDOS?|APELIDOS?|PELLID|ELLID|AVEL)\b/i
+      : /\b(N\w{0,4}OMB\w*|NOMER\w*|NOME\w*|VOW?ER\w*|N0MB\w*|NOM8\w*)\b/i;
+  const match = line.match(pattern);
+  if (!match || match.index === undefined) return line.trim();
+  const tail = line.slice(match.index + match[0].length);
+  return tail.replace(/^\s*[:\-]?\s*/, '').trim();
+};
+
+const isLikelyDdMmYyyy = (digits: string): boolean => {
+  if (!/^\d{8}$/.test(digits)) return false;
+  const dd = Number(digits.slice(0, 2));
+  const mm = Number(digits.slice(2, 4));
+  const yyyy = Number(digits.slice(4));
+  return dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12 && yyyy >= 1900 && yyyy <= 2099;
+};
+
 const normalizeDocNumber = (raw: string, expected: 'CEDULA' | 'RIF'): string | null => {
   const compact = raw
     .toUpperCase()
@@ -146,8 +165,29 @@ const normalizeDocNumber = (raw: string, expected: 'CEDULA' | 'RIF'): string | n
     .replace(/B/g, '8');
 
   if (expected === 'CEDULA') {
-    if (/^[VE]\d{6,10}$/.test(compact)) return compact;
-    if (/^\d{6,10}$/.test(compact)) return `V${compact}`;
+    if (/^[VE]\d{6,10}$/.test(compact)) {
+      if (isLikelyDdMmYyyy(compact.slice(1))) return null;
+      return compact;
+    }
+    if (/^\d{6,10}$/.test(compact)) {
+      if (isLikelyDdMmYyyy(compact)) return null;
+      return `V${compact}`;
+    }
+
+    const rough = raw
+      .toUpperCase()
+      .replace(/[OQ]/g, '0')
+      .replace(/[IL]/g, '1')
+      .replace(/S/g, '5')
+      .replace(/B/g, '8');
+    const prefix = (rough.match(/[VE]/)?.[0] ?? 'V');
+    const chunks = rough.match(/\d+/g) ?? [];
+    for (let end = chunks.length; end > 0; end -= 1) {
+      const digits = chunks.slice(0, end).join('');
+      if (!/^\d{6,10}$/.test(digits)) continue;
+      if (isLikelyDdMmYyyy(digits)) continue;
+      return `${prefix}${digits}`;
+    }
     return null;
   }
 
@@ -182,7 +222,7 @@ const extractIdentityFromCedula = (lines: string[], joined: string): IdpFields =
 
     if (!surnames && APELLIDO_LABEL.test(normalized)) {
       surnames = pickBestPersonCandidate([
-        leftPart.replace(/.*(APELL\w*|APELID\w*|ELLID\w*|AVEL\w*)/i, ''),
+        stripNameLabel(leftPart, 'surname'),
         rightPart,
         nextLine,
         leftPart
@@ -191,7 +231,7 @@ const extractIdentityFromCedula = (lines: string[], joined: string): IdpFields =
 
     if (!names && NOMBRE_LABEL.test(normalized)) {
       names = pickBestPersonCandidate([
-        leftPart.replace(/.*(N\w{0,4}OMB\w*|NOMER\w*|NOME\w*|VOW?ER\w*|N0MB\w*|NOM8\w*)/i, ''),
+        stripNameLabel(leftPart, 'name'),
         rightPart,
         nextLine,
         leftPart
@@ -205,8 +245,18 @@ const extractIdentityFromCedula = (lines: string[], joined: string): IdpFields =
     documentNumber = normalizeDocNumber(`${cedulaMatch[1]}${cedulaMatch[2]}`, 'CEDULA');
   }
   if (!documentNumber) {
+    const lineHit = joined.match(/\b([VE])\s*[.:-]?\s*(\d[\d.\s-]{5,12}\d)\b/i);
+    if (lineHit?.[1] && lineHit?.[2]) {
+      documentNumber = normalizeDocNumber(`${lineHit[1]}${lineHit[2]}`, 'CEDULA');
+    }
+  }
+  if (!documentNumber) {
     const fallback = joined.match(/\b\d{6,10}\b/);
     if (fallback) documentNumber = normalizeDocNumber(fallback[0], 'CEDULA');
+  }
+  if (!documentNumber) {
+    const fallbackGrouped = joined.match(/\b\d(?:[\d.\s-]{5,16}\d)\b/);
+    if (fallbackGrouped) documentNumber = normalizeDocNumber(fallbackGrouped[0], 'CEDULA');
   }
 
   return {

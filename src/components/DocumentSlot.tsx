@@ -18,6 +18,19 @@ const ACCEPT = '.pdf,image/png,image/jpeg,image/jpg';
 
 const emptyFields = { nombres: null, numeroId: null, fechaVencimiento: null };
 
+const DOC_NUMBER_CONFIDENCE_WARNING = 'No se pudo extraer el número de documento con confianza.';
+
+const normalizeForMatch = (value: string): string =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+const hasDocNumberConfidenceIssue = (warnings: string[]): boolean => {
+  const target = normalizeForMatch(DOC_NUMBER_CONFIDENCE_WARNING);
+  return warnings.some((warning) => normalizeForMatch(warning).includes(target));
+};
+
 const stripNameLabels = (value?: string): string => {
   if (!value) return '';
   return value
@@ -150,8 +163,16 @@ export function DocumentSlot({
       const apellidos = stripNameLabels(apellidosRaw);
       const nombreMostrable = [nombres, apellidos].filter(Boolean).join(' ').trim();
 
-      const validationStatus: 'VALIDO' | 'REVISAR' = backend.isValidForSlot ? 'VALIDO' : 'REVISAR';
-      const validationMessage = backend.slotValidationReason;
+      const numberRequired = docKind === 'CEDULA' || docKind === 'CEDULA_REPRESENTANTE' || docKind === 'RIF';
+      const docNumberIssue = numberRequired && (!numeroId || hasDocNumberConfidenceIssue(backend.warnings));
+
+      const validationStatus: 'VALIDO' | 'REVISAR' = backend.isValidForSlot && !docNumberIssue ? 'VALIDO' : 'REVISAR';
+      const validationMessage = docNumberIssue ? DOC_NUMBER_CONFIDENCE_WARNING : backend.slotValidationReason;
+
+      const parseWarnings = [...backend.warnings];
+      if (docNumberIssue && !hasDocNumberConfidenceIssue(parseWarnings)) {
+        parseWarnings.unshift(DOC_NUMBER_CONFIDENCE_WARNING);
+      }
 
       setItem({
         processing: false,
@@ -176,7 +197,7 @@ export function DocumentSlot({
         },
         validationStatus,
         validationMessage,
-        parseWarning: backend.warnings.length > 0 ? backend.warnings.join(' | ') : undefined
+        parseWarning: parseWarnings.length > 0 ? parseWarnings.join(' | ') : undefined
       });
     } catch (error) {
       setItem({
