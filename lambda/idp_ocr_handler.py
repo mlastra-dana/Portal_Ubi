@@ -36,6 +36,11 @@ NOISE_WORDS = {
     "SOLTERA",
     "CONTRIBUYENTE",
     "SENIAT",
+    "NOMBRES",
+    "NOMBRE",
+    "APELLIDOS",
+    "APELLIDO",
+    "FUND",
 }
 TRAILING_GARBAGE = {"NA", "N", "A", "EA", "ER", "OD", "DI", "RR", "ZN"}
 CONNECTORS = {"DE", "DEL", "LA", "LAS", "LOS", "DA", "DAS", "DO", "DOS"}
@@ -111,6 +116,28 @@ def clean_person_text(value: str) -> str:
         tokens.pop()
 
     return " ".join(tokens).strip()
+
+
+def strip_name_label(line: str, label_kind: str) -> str:
+    if label_kind == "surname":
+        return re.sub(
+            r".*(APELL(?:IDOS?)?|APELID(?:OS?)?|PELLID|ELLID|AVEL)\s*[:\-]?\s*",
+            "",
+            line,
+            flags=re.IGNORECASE,
+        ).strip()
+    return re.sub(
+        r".*(N\w{0,4}OMB\w*|NOMER\w*|NOME\w*|VOW?ER\w*|N0MB\w*|NOM8\w*)\s*[:\-]?\s*",
+        "",
+        line,
+        flags=re.IGNORECASE,
+    ).strip()
+
+
+def fix_person_field(value: str) -> str:
+    cleaned = clean_person_text(value)
+    cleaned = re.sub(r"^(NOMBRES?|APELLIDOS?)\s+", "", cleaned, flags=re.IGNORECASE).strip()
+    return cleaned
 
 
 def score_person_candidate(value: str) -> int:
@@ -194,32 +221,54 @@ def extract_identity_from_cedula(lines: List[str], joined: str) -> Dict[str, Opt
 
     for i, line in enumerate(lines):
         normalized = normalize_upper(line)
-        right_part = line.split("|")[1] if "|" in line else ""
-        left_part = line.split("|")[0]
         next_line = lines[i + 1] if i + 1 < len(lines) else ""
 
         if not surnames and APELLIDO_LABEL.search(normalized):
-            cands = [
-                re.sub(r".*(APELL\w*|APELID\w*|ELLID\w*|AVEL\w*)", "", left_part, flags=re.IGNORECASE),
-                right_part,
-                next_line,
-                left_part,
-            ]
-            surnames = pick_best_person_candidate(cands)
+            same_line = fix_person_field(strip_name_label(line, "surname"))
+            if score_person_candidate(same_line) >= 0:
+                surnames = same_line
+            else:
+                alt = fix_person_field(next_line)
+                if score_person_candidate(alt) >= 0:
+                    surnames = alt
 
         if not names and NOMBRE_LABEL.search(normalized):
-            cands = [
-                re.sub(r".*(N\w{0,4}OMB\w*|NOMER\w*|NOME\w*|VOW?ER\w*|N0MB\w*|NOM8\w*)", "", left_part, flags=re.IGNORECASE),
-                right_part,
-                next_line,
-                left_part,
-            ]
-            names = pick_best_person_candidate(cands)
+            same_line = fix_person_field(strip_name_label(line, "name"))
+            if score_person_candidate(same_line) >= 0:
+                names = same_line
+            else:
+                alt = fix_person_field(next_line)
+                if score_person_candidate(alt) >= 0:
+                    names = alt
+
+    # Fallback conservador si OCR no detectó bien etiquetas:
+    if not names or not surnames:
+        conservative_candidates = []
+        for line in lines:
+            upper = normalize_upper(line)
+            if any(x in upper for x in ("DIRECTOR", "FIRMA", "TITULAR", "VENEZOLANO", "EXPEDICION", "VENCIMIENTO")):
+                continue
+            cleaned = fix_person_field(line)
+            if score_person_candidate(cleaned) >= 0:
+                conservative_candidates.append(cleaned)
+
+        if not names:
+            names = pick_best_person_candidate(conservative_candidates)
+        if not surnames and conservative_candidates:
+            for c in conservative_candidates:
+                if c != names:
+                    surnames = c
+                    break
 
     doc_num = None
     match = CEDULA_RE.search(joined)
     if match:
         doc_num = normalize_doc_number(f"{match.group(1)}{match.group(2)}", "CEDULA")
+    if not doc_num:
+        # Busca patrón común "V 15.504.607" en líneas de encabezado
+        line_hit = re.search(r"\b([VE])\s*[\.:-]?\s*(\d[\d.\s-]{5,12}\d)\b", joined, flags=re.IGNORECASE)
+        if line_hit:
+            doc_num = normalize_doc_number(f"{line_hit.group(1)}{line_hit.group(2)}", "CEDULA")
     if not doc_num:
         fallback = re.search(r"\b\d{6,10}\b", joined)
         if fallback:
