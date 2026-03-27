@@ -136,9 +136,12 @@ export async function validateDocumentWithLambda(file: File, docKind: DocKind): 
   const expectedDocumentType = mapExpectedType(docKind);
   const fileBase64 = await toBase64(file);
   const contentType = file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+  const isPdf = contentType.includes('pdf') || file.name.toLowerCase().endsWith('.pdf');
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  // PDF puede tardar más por Textract asíncrono; imágenes suelen responder más rápido.
+  const requestTimeoutMs = isPdf ? 120000 : 45000;
+  const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
 
   try {
     const response = await fetch(LAMBDA_URL, {
@@ -168,6 +171,15 @@ export async function validateDocumentWithLambda(file: File, docKind: DocKind): 
     }
 
     return toSafeResult(flat, expectedDocumentType);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error(
+        isPdf
+          ? 'La validación del PDF tardó más de lo esperado. Intenta nuevamente o usa una imagen más liviana.'
+          : 'La validación tardó más de lo esperado. Intenta nuevamente.'
+      );
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
