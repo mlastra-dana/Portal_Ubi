@@ -47,7 +47,7 @@ const getValidationAlertType = (status?: 'VALIDO' | 'REVISAR', message?: string)
 };
 
 const formatSlotValidationMessage = (status?: 'VALIDO' | 'REVISAR', backendMessage?: string): string => {
-  if (status === 'VALIDO') return 'Documento válido para este requisito.';
+  if (status === 'VALIDO') return 'Documento válido.';
   if (status === 'REVISAR' && (backendMessage ?? '').toLowerCase().includes('no coincide')) {
     return 'Este documento no corresponde al requisito solicitado.';
   }
@@ -252,7 +252,7 @@ export function DocumentSlot({
           }`}
         >
           {cardState === 'VALIDADO'
-            ? 'Válido para requisito'
+            ? 'Válido'
             : cardState === 'REVISAR'
               ? 'No corresponde'
               : 'Por validar'}

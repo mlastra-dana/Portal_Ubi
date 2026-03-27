@@ -431,7 +431,13 @@ export default function Recaudos() {
               >
                 <h3 className="text-lg font-semibold text-ubii-blue">Identificación</h3>
                 {naturalIdpLoading ? (
-                  <p className="mt-2 text-xs text-ubii-blue">Completando datos con validación IDP...</p>
+                  <div className="mt-3 rounded-lg border border-ubii-blue/30 bg-ubii-light px-3 py-2">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-ubii-blue">
+                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-ubii-blue border-t-transparent" />
+                      Autocompletando datos desde el documento...
+                    </p>
+                    <p className="mt-1 text-xs text-gray-600">Espera hasta 2 minutos mientras llenamos los campos automáticamente.</p>
+                  </div>
                 ) : null}
                 <div className="mt-4 grid gap-4">
                   <label className="text-sm font-medium text-ubii-black">
@@ -635,7 +641,13 @@ export default function Recaudos() {
                 >
                   <h3 className="text-lg font-semibold text-ubii-blue">Datos del representante legal</h3>
                   {repIdpLoading ? (
-                    <p className="mt-2 text-xs text-ubii-blue">Completando datos con validación IDP...</p>
+                    <div className="mt-3 rounded-lg border border-ubii-blue/30 bg-ubii-light px-3 py-2">
+                      <p className="flex items-center gap-2 text-sm font-semibold text-ubii-blue">
+                        <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-ubii-blue border-t-transparent" />
+                        Autocompletando datos desde el documento...
+                      </p>
+                      <p className="mt-1 text-xs text-gray-600">Espera hasta 2 minutos mientras llenamos los campos automáticamente.</p>
+                    </div>
                   ) : null}
                   <div className="mt-4 grid gap-4 md:grid-cols-2">
                     <label className="text-sm font-medium text-ubii-black">

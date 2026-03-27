@@ -52,7 +52,17 @@ const NOISE_WORDS = new Set([
   'FECHA',
   'NACIMIENTO',
   'CASADA',
+  'CASADO',
   'SOLTERA',
+  'SOLTERO',
+  'VIUDA',
+  'VIUDO',
+  'DIVORCIADA',
+  'DIVORCIADO',
+  'EDO',
+  'CIVIL',
+  'UNION',
+  'LIBRE',
   'CONTRIBUYENTE',
   'SENIAT'
 ]);

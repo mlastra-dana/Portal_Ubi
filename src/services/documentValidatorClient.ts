@@ -33,6 +33,7 @@ type LambdaFlatResponse = {
   fields?: LambdaDocumentFields;
   confidence?: LambdaConfidence;
   expiryAlert?: boolean;
+  ocrTextPreview?: string;
   warnings?: string[];
   message?: string;
   error?: string;
@@ -59,6 +60,7 @@ export type DocumentValidationResult = {
   >;
   confidence: Required<Pick<LambdaConfidence, 'documentNumber' | 'givenNames' | 'surnames' | 'companyName' | 'ocrAverage'>>;
   expiryAlert: boolean;
+  ocrTextPreview: string;
   warnings: string[];
 };
 
@@ -136,6 +138,7 @@ const toSafeResult = (payload: LambdaFlatResponse, expectedDocumentType: string)
       ocrAverage: confidence.ocrAverage ?? 0.0
     },
     expiryAlert: Boolean(payload.expiryAlert),
+    ocrTextPreview: payload.ocrTextPreview ?? '',
     warnings: Array.isArray(payload.warnings) ? payload.warnings : payload.error ? [payload.error] : []
   };
 };
@@ -160,7 +163,7 @@ export async function validateDocumentWithLambda(file: File, docKind: DocKind): 
 
   const controller = new AbortController();
   // PDF puede tardar más por Textract asíncrono; imágenes suelen responder más rápido.
-  const requestTimeoutMs = isPdf ? 240000 : 45000;
+  const requestTimeoutMs = isPdf ? 240000 : 180000;
   const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
 
   try {

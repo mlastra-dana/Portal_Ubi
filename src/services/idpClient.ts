@@ -13,7 +13,7 @@ const cleanNamePart = (value: string): string =>
   value
     .replace(/\s+/g, ' ')
     .replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ\s]/g, ' ')
-    .replace(/\b(DIRECTOR|TITULAR|FIRMA|AUTORIZADA|NA)\b/gi, ' ')
+    .replace(/\b(DIRECTOR|TITULAR|FIRMA|AUTORIZADA|NA|CASADA|CASADO|SOLTERA|SOLTERO|VIUDA|VIUDO|DIVORCIADA|DIVORCIADO|EDO|CIVIL|UNION|LIBRE)\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
