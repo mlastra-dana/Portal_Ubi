@@ -11,6 +11,7 @@ type Props = {
   description?: string;
   onChange?: (results: UploadedDocumentResult[]) => void;
   className?: string;
+  showExtractedDetails?: boolean;
 };
 
 const ACCEPT = '.pdf,image/png,image/jpeg,image/jpg';
@@ -72,7 +73,16 @@ const buildValidationSummary = (
   return lines.join('\n').trim();
 };
 
-export function DocumentSlot({ label, required = false, multiple = false, docKind, description, onChange, className = '' }: Props) {
+export function DocumentSlot({
+  label,
+  required = false,
+  multiple = false,
+  docKind,
+  description,
+  onChange,
+  className = '',
+  showExtractedDetails = true
+}: Props) {
   const [results, setResults] = useState<UploadedDocumentResult[]>([]);
   const inputId = useId();
   const canUploadMore = multiple || results.length === 0;
@@ -304,10 +314,12 @@ export function DocumentSlot({ label, required = false, multiple = false, docKin
                 {validationAlertType ? <AlertBanner type={validationAlertType}>{slotValidationMessage}</AlertBanner> : null}
                 {result.parseWarning ? <AlertBanner type="warning">{result.parseWarning}</AlertBanner> : null}
 
-                <details className="rounded-lg border border-ubii-border bg-white p-3">
-                  <summary className="cursor-pointer text-sm font-semibold text-ubii-blue">Ver datos extraídos del documento</summary>
-                  <pre className="mt-2 whitespace-pre-wrap text-xs text-gray-700">{result.ocrDisplayText || 'Sin datos detectados.'}</pre>
-                </details>
+                {showExtractedDetails ? (
+                  <details className="rounded-lg border border-ubii-border bg-white p-3">
+                    <summary className="cursor-pointer text-sm font-semibold text-ubii-blue">Ver datos extraídos del documento</summary>
+                    <pre className="mt-2 whitespace-pre-wrap text-xs text-gray-700">{result.ocrDisplayText || 'Sin datos detectados.'}</pre>
+                  </details>
+                ) : null}
               </div>
             ) : null}
           </article>

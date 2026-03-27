@@ -413,6 +413,7 @@ export default function Recaudos() {
                 label="RIF"
                 required
                 docKind="RIF"
+                showExtractedDetails={false}
                 onChange={setNaturalRif}
               />
             </div>
