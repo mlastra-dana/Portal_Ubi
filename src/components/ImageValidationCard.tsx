@@ -13,14 +13,6 @@ const stateLabel: Record<CommerceImageAnalysis['validationResult'], string> = {
   'NO COINCIDE': 'No coincide'
 };
 
-const mismatchReasonLabel: Record<Exclude<CommerceImageAnalysis['mismatchReason'], null>, string> = {
-  PERSONA_DETECTADA: 'La imagen corresponde a una persona y no al tipo solicitado.',
-  OTRA_CATEGORIA: 'La imagen corresponde a otra categoría distinta a la solicitada.',
-  IMAGEN_AMBIGUA: 'La imagen no tiene suficiente claridad para confirmar el tipo solicitado.',
-  CALIDAD_BAJA: 'La calidad de la imagen no permite validarla con confianza.',
-  CONTENIDO_IRRELEVANTE: 'La imagen no contiene elementos relevantes para la validación.'
-};
-
 const shouldShowAiWarning = (aiGeneratedProbability: number, threshold = 70): boolean => aiGeneratedProbability >= threshold;
 
 type Props = {
@@ -52,7 +44,6 @@ export function ImageValidationCard({ previewUrl, requestedLabel, analyzing, ana
   if (!analysis) return null;
 
   const state = analysis.validationResult;
-  const mainReasonText = analysis.mismatchReason ? mismatchReasonLabel[analysis.mismatchReason] : 'Sin observaciones relevantes.';
   const mainBanner = (() => {
     if (state === 'VALIDADA') return null;
     if (analysis.requestedCategory === 'FACHADA') {
@@ -97,16 +88,25 @@ export function ImageValidationCard({ previewUrl, requestedLabel, analyzing, ana
           <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${stateStyles[state]}`}>{stateLabel[state]}</span>
         </div>
 
-        <p className="text-sm leading-6 text-[#111111]">{analysis.description}</p>
-
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="rounded-full bg-[#F5F9FD] px-3 py-1 font-semibold text-[#111111]">{Math.round(analysis.categoryProbability)}% coincidencia</span>
+          <span
+            className={`rounded-full px-3 py-1 font-semibold ${
+              analysis.aiGeneratedProbability >= 70
+                ? 'bg-amber-100 text-amber-800'
+                : 'bg-[#F5F9FD] text-[#111111]'
+            }`}
+          >
+            {Math.round(analysis.aiGeneratedProbability)}% prob. IA
+          </span>
         </div>
 
-        <p className="text-xs text-gray-600">{mainReasonText}</p>
-
         {mainBanner ? <AlertBanner type={state === 'NO COINCIDE' ? 'error' : 'warning'}>{mainBanner}</AlertBanner> : null}
-        {showAiBanner ? <AlertBanner type="warning">Posible imagen generada por inteligencia artificial.</AlertBanner> : null}
+        {showAiBanner ? (
+          <AlertBanner type="warning">
+            Probabilidad alta de imagen generada por inteligencia artificial ({Math.round(analysis.aiGeneratedProbability)}%).
+          </AlertBanner>
+        ) : null}
       </div>
     </div>
   );
