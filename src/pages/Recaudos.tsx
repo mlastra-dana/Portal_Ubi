@@ -27,18 +27,6 @@ const isValidVenezuelanPhone = (value: string): boolean => {
   if (digits.startsWith('0') && digits.length === 11) return mobileCodes.has(digits.slice(1, 4));
   return false;
 };
-const splitFullName = (value: string): { nombres: string; apellidos: string } => {
-  const clean = value
-    .replace(/Escaneado\s+con\s+CamScanner/gi, ' ')
-    .replace(/\b(CAMSCANNER|ESCANEADO|CON)\b/gi, ' ')
-    .trim()
-    .replace(/\s+/g, ' ');
-  if (!clean) return { nombres: '', apellidos: '' };
-  const parts = clean.split(' ');
-  if (parts.length === 1) return { nombres: parts[0], apellidos: '' };
-  if (parts.length === 2) return { nombres: parts[0], apellidos: parts[1] };
-  return { nombres: parts.slice(0, 2).join(' '), apellidos: parts.slice(2).join(' ') };
-};
 
 export default function Recaudos() {
   const navigate = useNavigate();
@@ -92,10 +80,8 @@ export default function Recaudos() {
     let cancelled = false;
     const backendNombres = cedula.fields.nombres ?? '';
     const backendApellidos = cedula.fields.apellidos ?? '';
-    const nameSource = [backendNombres, backendApellidos].filter(Boolean).join(' ').trim();
-    const { nombres, apellidos } = splitFullName(nameSource);
-    setNaturalNombres(backendNombres || nombres);
-    setNaturalApellidos(backendApellidos || apellidos);
+    setNaturalNombres(backendNombres);
+    setNaturalApellidos(backendApellidos);
     const cedulaNumero = cedula.fields.numeroId;
     setNaturalCedulaId(cedulaNumero ?? '');
 
@@ -145,10 +131,8 @@ export default function Recaudos() {
     let cancelled = false;
     const backendNombres = rep.fields.nombres ?? '';
     const backendApellidos = rep.fields.apellidos ?? '';
-    const nameSource = [backendNombres, backendApellidos].filter(Boolean).join(' ').trim();
-    const { nombres, apellidos } = splitFullName(nameSource);
-    setRepNombres(backendNombres || nombres);
-    setRepApellidos(backendApellidos || apellidos);
+    setRepNombres(backendNombres);
+    setRepApellidos(backendApellidos);
     const cedulaNumero = rep.fields.numeroId;
     setRepCedula(cedulaNumero ?? '');
 
