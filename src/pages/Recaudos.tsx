@@ -92,12 +92,14 @@ export default function Recaudos() {
 
     let cancelled = false;
     const extracted = extractCedulaAutofill(cedula.rawText ?? '');
+    const backendNombres = cedula.fields.nombres ?? '';
+    const backendApellidos = cedula.fields.apellidos ?? '';
     const nameSource = extracted.nombres && extracted.apellidos
       ? `${extracted.nombres} ${extracted.apellidos}`
-      : (cedula.fields.nombres ?? '');
+      : [backendNombres, backendApellidos].filter(Boolean).join(' ').trim();
     const { nombres, apellidos } = splitFullName(nameSource);
-    setNaturalNombres(extracted.nombres ?? nombres);
-    setNaturalApellidos(extracted.apellidos ?? apellidos);
+    setNaturalNombres((extracted.nombres ?? backendNombres) || nombres);
+    setNaturalApellidos((extracted.apellidos ?? backendApellidos) || apellidos);
     const cedulaNumero = extracted.cedula ?? cedula.fields.numeroId;
     setNaturalCedulaId(cedulaNumero ?? '');
 
@@ -147,12 +149,14 @@ export default function Recaudos() {
 
     let cancelled = false;
     const extracted = extractCedulaAutofill(rep.rawText ?? '');
+    const backendNombres = rep.fields.nombres ?? '';
+    const backendApellidos = rep.fields.apellidos ?? '';
     const nameSource = extracted.nombres && extracted.apellidos
       ? `${extracted.nombres} ${extracted.apellidos}`
-      : (rep.fields.nombres ?? '');
+      : [backendNombres, backendApellidos].filter(Boolean).join(' ').trim();
     const { nombres, apellidos } = splitFullName(nameSource);
-    setRepNombres(extracted.nombres ?? nombres);
-    setRepApellidos(extracted.apellidos ?? apellidos);
+    setRepNombres((extracted.nombres ?? backendNombres) || nombres);
+    setRepApellidos((extracted.apellidos ?? backendApellidos) || apellidos);
     const cedulaNumero = extracted.cedula ?? rep.fields.numeroId;
     setRepCedula(cedulaNumero ?? '');
 

@@ -2,6 +2,7 @@ export type DocKind = 'CEDULA' | 'RIF' | 'ACTA' | 'REGISTRO' | 'ACTA_REGISTRO' |
 
 export type OcrExtractedFields = {
   nombres: string | null;
+  apellidos: string | null;
   numeroId: string | null;
   fechaVencimiento: string | null;
 };

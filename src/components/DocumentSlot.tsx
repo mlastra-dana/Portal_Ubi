@@ -16,7 +16,7 @@ type Props = {
 
 const ACCEPT = '.pdf,image/png,image/jpeg,image/jpg';
 
-const emptyFields = { nombres: null, numeroId: null, fechaVencimiento: null };
+const emptyFields = { nombres: null, apellidos: null, numeroId: null, fechaVencimiento: null };
 
 const DOC_NUMBER_CONFIDENCE_WARNING = 'No se pudo extraer el número de documento con confianza.';
 
@@ -236,7 +236,6 @@ export function DocumentSlot({
       ).trim();
       const nombres = stripNameLabels(nombresRaw);
       const apellidos = stripNameLabels(apellidosRaw);
-      const nombreMostrable = [nombres, apellidos].filter(Boolean).join(' ').trim();
 
       const numberRequired = docKind === 'CEDULA' || docKind === 'CEDULA_REPRESENTANTE' || docKind === 'RIF';
       const docNumberIssue = numberRequired && (!numeroId || hasDocNumberConfidenceIssue(backend.warnings));
@@ -266,7 +265,8 @@ export function DocumentSlot({
         ),
         confidence: Math.round((backend.confidence.ocrAverage ?? 0) * 100),
         fields: {
-          nombres: (docKind === 'RIF' ? (companyName || nombresRaw) : nombreMostrable || nombres) || null,
+          nombres: (docKind === 'RIF' ? (companyName || nombresRaw) : nombres) || null,
+          apellidos: (docKind === 'RIF' ? null : apellidos) || null,
           numeroId: numeroId || null,
           fechaVencimiento: backend.fields.fechaVencimiento || null
         },
