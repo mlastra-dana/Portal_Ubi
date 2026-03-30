@@ -34,7 +34,8 @@ NOISE_WORDS = {
     "VIUDA", "VIUDO", "DIVORCIADA", "DIVORCIADO", "EDO", "CIVIL", "UNION", "LIBRE",
     "CONTRIBUYENTE", "SENIAT", "REGISTRO", "MERCANTIL", "ACTA", "CONSTITUTIVA",
     "NOMBRES", "NOMBRE", "APELLIDOS", "APELLIDO", "FUND", "AUTORIZADA",
-    "NUMERO", "NÚMERO", "DOC", "DOCUMENTO"
+    "NUMERO", "NÚMERO", "DOC", "DOCUMENTO",
+    "CAMSCANNER", "ESCANEADO", "SCANNER"
 }
 TRAILING_GARBAGE = {"NA", "N", "A", "EA", "ER", "OD", "DI", "RR", "ZN"}
 CONNECTORS = {"DE", "DEL", "LA", "LAS", "LOS", "DA", "DAS", "DO", "DOS", "Y"}
@@ -236,7 +237,9 @@ def detect_document_type(text: str) -> str:
 
 
 def clean_person_text(value: str) -> str:
-    text = re.sub(r"\b(NA\)|N\)|DIRECTOR|TITULAR|FIRMA|AUTORIZADA)\b.*$", " ", value, flags=re.IGNORECASE)
+    text = re.sub(r"\bESCANEADO\s+CON\s+CAMSCANNER\b.*$", " ", value, flags=re.IGNORECASE)
+    text = re.sub(r"\bCAMSCANNER\b.*$", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b(NA\)|N\)|DIRECTOR|TITULAR|FIRMA|AUTORIZADA)\b.*$", " ", text, flags=re.IGNORECASE)
     text = re.sub(r"[^A-Za-zÁÉÍÓÚÑáéíóúñ\s]", " ", text)
     text = normalize_spaces(text)
 
