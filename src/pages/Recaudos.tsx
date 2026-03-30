@@ -88,7 +88,9 @@ export default function Recaudos() {
 
     let cancelled = false;
     const extracted = extractCedulaAutofill(cedula.rawText ?? '');
-    const nameSource = extracted.nombres && extracted.apellidos ? `${extracted.nombres} ${extracted.apellidos}` : '';
+    const nameSource = extracted.nombres && extracted.apellidos
+      ? `${extracted.nombres} ${extracted.apellidos}`
+      : (cedula.fields.nombres ?? '');
     const { nombres, apellidos } = splitFullName(nameSource);
     setNaturalNombres(extracted.nombres ?? nombres);
     setNaturalApellidos(extracted.apellidos ?? apellidos);
@@ -141,7 +143,9 @@ export default function Recaudos() {
 
     let cancelled = false;
     const extracted = extractCedulaAutofill(rep.rawText ?? '');
-    const nameSource = extracted.nombres && extracted.apellidos ? `${extracted.nombres} ${extracted.apellidos}` : '';
+    const nameSource = extracted.nombres && extracted.apellidos
+      ? `${extracted.nombres} ${extracted.apellidos}`
+      : (rep.fields.nombres ?? '');
     const { nombres, apellidos } = splitFullName(nameSource);
     setRepNombres(extracted.nombres ?? nombres);
     setRepApellidos(extracted.apellidos ?? apellidos);
