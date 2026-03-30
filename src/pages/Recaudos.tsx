@@ -29,7 +29,11 @@ const isValidVenezuelanPhone = (value: string): boolean => {
   return false;
 };
 const splitFullName = (value: string): { nombres: string; apellidos: string } => {
-  const clean = value.trim().replace(/\s+/g, ' ');
+  const clean = value
+    .replace(/Escaneado\s+con\s+CamScanner/gi, ' ')
+    .replace(/\b(CAMSCANNER|ESCANEADO|CON)\b/gi, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
   if (!clean) return { nombres: '', apellidos: '' };
   const parts = clean.split(' ');
   if (parts.length === 1) return { nombres: parts[0], apellidos: '' };
