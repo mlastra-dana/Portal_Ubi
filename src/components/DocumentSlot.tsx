@@ -69,6 +69,27 @@ const extractNamePartsFromPreview = (preview?: string): { nombres: string; apell
   return { nombres, apellidos };
 };
 
+const extractNamePartsFromMergedText = (text?: string): { nombres: string; apellidos: string } => {
+  if (!text?.trim()) return { nombres: '', apellidos: '' };
+  const compact = text.replace(/\s+/g, ' ').trim();
+
+  const surnameMatch = compact.match(/\bAPELL\w*\s*[:\-]?\s*([A-ZÁÉÍÓÚÑ\s]+?)(?=\s+\bNOMB\w*\b|$)/i);
+  const nameMatch = compact.match(/\bNOMB\w*\s*[:\-]?\s*([A-ZÁÉÍÓÚÑ\s]+?)(?=\s+\b(APELL\w*|FIRMA|DIRECTOR|VENEZOLANO)\b|$)/i);
+
+  return {
+    nombres: (nameMatch?.[1] ?? '').trim(),
+    apellidos: (surnameMatch?.[1] ?? '').trim()
+  };
+};
+
+const isMobileSafari = (): boolean => {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  const isiOS = /iP(hone|od|ad)/.test(ua);
+  const isSafari = /Safari/i.test(ua) && !/(CriOS|FxiOS|EdgiOS|OPiOS)/i.test(ua);
+  return isiOS && isSafari;
+};
+
 const getValidationAlertType = (status?: 'VALIDO' | 'REVISAR', message?: string): 'success' | 'warning' | 'error' | null => {
   if (status === 'VALIDO') return 'success';
   if (status !== 'REVISAR') return null;
@@ -186,11 +207,23 @@ export function DocumentSlot({
       ).trim();
 
       const fallbackFromPreview = extractNamePartsFromPreview(backend.ocrTextPreview);
+      const safariFallback = isMobileSafari()
+        ? extractNamePartsFromMergedText(
+            [
+              backend.ocrTextPreview || '',
+              backend.fields.nombres || '',
+              backend.fields.givenNames || '',
+              backend.fields.apellidos || '',
+              backend.fields.surnames || ''
+            ].join(' ')
+          )
+        : { nombres: '', apellidos: '' };
 
       const nombresRaw = (
         backend.fields.nombres ||
         backend.fields.givenNames ||
         fallbackFromPreview.nombres ||
+        safariFallback.nombres ||
         companyName ||
         ''
       ).trim();
@@ -198,6 +231,7 @@ export function DocumentSlot({
         backend.fields.apellidos ||
         backend.fields.surnames ||
         fallbackFromPreview.apellidos ||
+        safariFallback.apellidos ||
         ''
       ).trim();
       const nombres = stripNameLabels(nombresRaw);

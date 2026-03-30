@@ -395,6 +395,15 @@ def remove_official_noise(candidate: str, official_noise: List[str]) -> str:
     return out.strip()
 
 
+def extract_labeled_name_from_joined(joined: str, label: str, stop_label: str) -> str:
+    compact = normalize_spaces(joined)
+    pattern = rf"\b{label}\w*\s*[:\-]?\s*([A-ZÁÉÍÓÚÑ\s]{{3,80}}?)(?=\s+\b{stop_label}\w*\b|$)"
+    match = re.search(pattern, compact, flags=re.IGNORECASE)
+    if not match:
+        return ""
+    return fix_person_field(match.group(1))
+
+
 def extract_identity_from_cedula(lines: List[str], joined: str) -> Dict[str, Optional[str]]:
     names, surnames = "", ""
     official_noise = build_official_signature_noise(lines)
@@ -424,6 +433,23 @@ def extract_identity_from_cedula(lines: List[str], joined: str) -> Dict[str, Opt
                 alt = remove_official_noise(alt, official_noise)
                 if score_person_candidate(alt) >= 0:
                     names = alt
+
+    # fallback por texto unificado cuando OCR junta etiquetas en una sola línea.
+    if not surnames:
+        from_joined = remove_official_noise(
+            extract_labeled_name_from_joined(joined, "APELL", "NOMB"),
+            official_noise,
+        )
+        if score_person_candidate(from_joined) >= 0:
+            surnames = from_joined
+
+    if not names:
+        from_joined = remove_official_noise(
+            extract_labeled_name_from_joined(joined, "NOMB", "FIRMA"),
+            official_noise,
+        )
+        if score_person_candidate(from_joined) >= 0:
+            names = from_joined
 
     if not names or not surnames:
         conservative_candidates = []
