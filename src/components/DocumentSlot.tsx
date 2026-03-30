@@ -55,25 +55,46 @@ const formatSlotValidationMessage = (status?: 'VALIDO' | 'REVISAR', backendMessa
   return backendMessage?.trim() || 'No se pudo validar el documento para este requisito.';
 };
 
+const toFriendlyWarning = (warning: string): string => {
+  const text = warning.trim();
+  const lower = text.toLowerCase();
+
+  if (lower.includes('no se pudieron extraer apellidos')) {
+    return 'No pudimos leer los apellidos con claridad. Puedes escribirlos manualmente o subir una foto más nítida.';
+  }
+  if (lower.includes('no se pudieron extraer nombres')) {
+    return 'No pudimos leer los nombres con claridad. Puedes escribirlos manualmente o subir una foto más nítida.';
+  }
+  if (lower.includes('no se pudo extraer número de identificación')) {
+    return 'No pudimos leer el número de identificación con claridad. Intenta con mejor luz y sin reflejos.';
+  }
+  if (lower.includes('ocr con baja confianza')) {
+    return 'La imagen no se ve con suficiente nitidez. Intenta nuevamente con mejor iluminación.';
+  }
+  return text;
+};
+
 const buildValidationSummary = (
   docKind: DocKind,
-  fieldValues: { nombres?: string; apellidos?: string; givenNames?: string; surnames?: string; companyName?: string; numeroId?: string },
+  fieldValues: { nombres?: string; apellidos?: string; razonSocial?: string; numeroId?: string },
 ): string => {
   const lines: string[] = [];
 
-  const nombres = (fieldValues.nombres ?? fieldValues.givenNames ?? '').trim();
-  const apellidos = (fieldValues.apellidos ?? fieldValues.surnames ?? '').trim();
-  const companyName = (fieldValues.companyName ?? '').trim();
+  const nombres = (fieldValues.nombres ?? '').trim();
+  const apellidos = (fieldValues.apellidos ?? '').trim();
+  const razonSocial = (fieldValues.razonSocial ?? '').trim();
   const numeroId = (fieldValues.numeroId ?? '').trim();
 
   const nombreCompleto = [nombres, apellidos].filter(Boolean).join(' ').trim();
 
-  if ((docKind === 'CEDULA' || docKind === 'CEDULA_REPRESENTANTE') && nombreCompleto) {
-    lines.push(`Nombre: ${nombreCompleto}`);
+  if (docKind === 'CEDULA' || docKind === 'CEDULA_REPRESENTANTE') {
+    if (nombres) lines.push(`Nombres: ${nombres}`);
+    if (apellidos) lines.push(`Apellidos: ${apellidos}`);
+    if (!nombres && !apellidos && nombreCompleto) lines.push(`Nombre: ${nombreCompleto}`);
   }
 
-  if (docKind === 'RIF' && companyName) {
-    lines.push(`Razón social: ${companyName}`);
+  if (docKind === 'RIF' && razonSocial) {
+    lines.push(`Razón social: ${razonSocial}`);
   }
 
   if (numeroId) {
@@ -143,34 +164,27 @@ export function DocumentSlot({
       setItem({ progress: 90 });
 
       const numeroId = (
-        backend.fields.numeroIdentificacion ||
-        backend.fields.cedula ||
-        backend.fields.rif ||
-        backend.fields.documentNumber ||
-        ''
+        backend.fields.numeroIdentificacion || ''
       ).trim();
 
-      const companyName = (
-        backend.fields.razonSocial ||
-        backend.fields.companyName ||
-        ''
+      const razonSocial = (
+        backend.fields.razonSocial || ''
       ).trim();
 
       const nombresRaw = (
-        backend.fields.nombres ||
-        backend.fields.givenNames ||
-        ''
+        backend.fields.nombres || ''
       ).trim();
       const apellidosRaw = (
-        backend.fields.apellidos ||
-        backend.fields.surnames ||
-        ''
+        backend.fields.apellidos || ''
       ).trim();
       const nombres = stripNameLabels(nombresRaw);
       const apellidos = stripNameLabels(apellidosRaw);
 
       const numberRequired = docKind === 'CEDULA' || docKind === 'CEDULA_REPRESENTANTE' || docKind === 'RIF';
-      const docNumberIssue = numberRequired && (!numeroId || hasDocNumberConfidenceIssue(backend.warnings));
+      const docNumberIssue = numberRequired && (
+        backend.fieldStatus.numeroIdentificacion === 'not_detected' ||
+        (!numeroId || hasDocNumberConfidenceIssue(backend.warnings))
+      );
 
       const validationStatus: 'VALIDO' | 'REVISAR' = backend.isValidForSlot && !docNumberIssue ? 'VALIDO' : 'REVISAR';
       const validationMessage = docNumberIssue ? DOC_NUMBER_CONFIDENCE_WARNING : backend.slotValidationReason;
@@ -179,6 +193,7 @@ export function DocumentSlot({
       if (docNumberIssue && !hasDocNumberConfidenceIssue(parseWarnings)) {
         parseWarnings.unshift(DOC_NUMBER_CONFIDENCE_WARNING);
       }
+      const friendlyWarnings = Array.from(new Set(parseWarnings.map(toFriendlyWarning)));
 
       setItem({
         processing: false,
@@ -189,15 +204,13 @@ export function DocumentSlot({
           {
             nombres,
             apellidos,
-            givenNames: nombres,
-            surnames: apellidos,
-            companyName,
+            razonSocial,
             numeroId
           }
         ),
         confidence: Math.round((backend.confidence.ocrAverage ?? 0) * 100),
         fields: {
-          nombres: (docKind === 'RIF' ? (companyName || nombresRaw) : nombres) || null,
+          nombres: (docKind === 'RIF' ? (razonSocial || nombresRaw) : nombres) || null,
           apellidos: (docKind === 'RIF' ? null : apellidos) || null,
           numeroId: numeroId || null,
           fechaVencimiento: backend.fields.fechaVencimiento || null
@@ -206,8 +219,8 @@ export function DocumentSlot({
         validationMessage,
         parseWarning: (backend.expiryAlert && !parseWarnings.length)
           ? 'Documento próximo a vencer.'
-          : parseWarnings.length > 0
-            ? parseWarnings.join(' | ')
+          : friendlyWarnings.length > 0
+            ? friendlyWarnings.join(' | ')
             : undefined
       });
     } catch (error) {

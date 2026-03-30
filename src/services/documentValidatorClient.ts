@@ -1,18 +1,26 @@
 import type { DocKind } from '../types/recaudos';
 
 type LambdaDocumentFields = {
-  documentType?: string;
-  documentNumber?: string;
+  nombres?: string;
+  apellidos?: string;
   numeroIdentificacion?: string;
   fechaVencimiento?: string;
   razonSocial?: string;
+  documentType?: string;
+  documentNumber?: string;
   givenNames?: string;
   surnames?: string;
   companyName?: string;
-  nombres?: string;
-  apellidos?: string;
   cedula?: string;
   rif?: string;
+};
+
+type LambdaFieldStatus = {
+  nombres?: 'detected' | 'not_detected' | 'not_applicable';
+  apellidos?: 'detected' | 'not_detected' | 'not_applicable';
+  numeroIdentificacion?: 'detected' | 'not_detected' | 'not_applicable';
+  fechaVencimiento?: 'detected' | 'not_detected' | 'not_applicable';
+  razonSocial?: 'detected' | 'not_detected' | 'not_applicable';
 };
 
 type LambdaConfidence = {
@@ -31,6 +39,8 @@ type LambdaFlatResponse = {
   fileKindDetected?: string;
   isExtractionPerformed?: boolean;
   fields?: LambdaDocumentFields;
+  legacyFields?: LambdaDocumentFields;
+  fieldStatus?: LambdaFieldStatus;
   confidence?: LambdaConfidence;
   expiryAlert?: boolean;
   ocrTextPreview?: string;
@@ -52,12 +62,14 @@ export type DocumentValidationResult = {
   slotValidationReason: string;
   fileKindDetected: string;
   isExtractionPerformed: boolean;
-  fields: Required<
-    Pick<
-      LambdaDocumentFields,
-      'documentType' | 'documentNumber' | 'numeroIdentificacion' | 'fechaVencimiento' | 'razonSocial' | 'givenNames' | 'surnames' | 'companyName' | 'nombres' | 'apellidos' | 'cedula' | 'rif'
-    >
-  >;
+  fields: {
+    nombres: string;
+    apellidos: string;
+    numeroIdentificacion: string;
+    fechaVencimiento: string;
+    razonSocial: string;
+  };
+  fieldStatus: Required<LambdaFieldStatus>;
   confidence: Required<Pick<LambdaConfidence, 'documentNumber' | 'givenNames' | 'surnames' | 'companyName' | 'ocrAverage'>>;
   expiryAlert: boolean;
   ocrTextPreview: string;
@@ -127,29 +139,53 @@ const unwrapLambdaPayload = (payload: unknown): LambdaFlatResponse => {
 
 const toSafeResult = (payload: LambdaFlatResponse, expectedDocumentType: string): DocumentValidationResult => {
   const fields = payload.fields ?? {};
+  const legacy = payload.legacyFields ?? {};
+  const resolvedDocType = payload.documentTypeDetected ?? 'DESCONOCIDO';
   const confidence = payload.confidence ?? {};
+
+  const normalizedFields = {
+    nombres: (fields.nombres ?? fields.givenNames ?? legacy.nombres ?? legacy.givenNames ?? '').trim(),
+    apellidos: (fields.apellidos ?? fields.surnames ?? legacy.apellidos ?? legacy.surnames ?? '').trim(),
+    numeroIdentificacion: (
+      fields.numeroIdentificacion ??
+      fields.cedula ??
+      fields.rif ??
+      fields.documentNumber ??
+      legacy.numeroIdentificacion ??
+      legacy.cedula ??
+      legacy.rif ??
+      legacy.documentNumber ??
+      ''
+    ).trim(),
+    fechaVencimiento: (fields.fechaVencimiento ?? legacy.fechaVencimiento ?? '').trim(),
+    razonSocial: (fields.razonSocial ?? fields.companyName ?? legacy.razonSocial ?? legacy.companyName ?? '').trim()
+  };
+
+  const fieldStatus: Required<LambdaFieldStatus> = {
+    nombres: payload.fieldStatus?.nombres ?? (resolvedDocType === 'CEDULA' ? (normalizedFields.nombres ? 'detected' : 'not_detected') : 'not_applicable'),
+    apellidos: payload.fieldStatus?.apellidos ?? (resolvedDocType === 'CEDULA' ? (normalizedFields.apellidos ? 'detected' : 'not_detected') : 'not_applicable'),
+    numeroIdentificacion: payload.fieldStatus?.numeroIdentificacion ?? (
+      resolvedDocType === 'CEDULA' || resolvedDocType === 'RIF'
+        ? (normalizedFields.numeroIdentificacion ? 'detected' : 'not_detected')
+        : 'not_applicable'
+    ),
+    fechaVencimiento: payload.fieldStatus?.fechaVencimiento ?? (
+      resolvedDocType === 'CEDULA' || resolvedDocType === 'RIF'
+        ? (normalizedFields.fechaVencimiento ? 'detected' : 'not_detected')
+        : 'not_applicable'
+    ),
+    razonSocial: payload.fieldStatus?.razonSocial ?? (resolvedDocType === 'RIF' ? (normalizedFields.razonSocial ? 'detected' : 'not_detected') : 'not_applicable')
+  };
 
   return {
     expectedDocumentType: payload.expectedDocumentType ?? expectedDocumentType,
-    documentTypeDetected: payload.documentTypeDetected ?? 'DESCONOCIDO',
+    documentTypeDetected: resolvedDocType,
     isValidForSlot: Boolean(payload.isValidForSlot),
     slotValidationReason: payload.slotValidationReason ?? payload.message ?? 'Validación procesada.',
     fileKindDetected: payload.fileKindDetected ?? 'desconocido',
     isExtractionPerformed: Boolean(payload.isExtractionPerformed),
-    fields: {
-      documentType: fields.documentType ?? '',
-      documentNumber: fields.documentNumber ?? '',
-      numeroIdentificacion: fields.numeroIdentificacion ?? '',
-      fechaVencimiento: fields.fechaVencimiento ?? '',
-      razonSocial: fields.razonSocial ?? '',
-      givenNames: fields.givenNames ?? '',
-      surnames: fields.surnames ?? '',
-      companyName: fields.companyName ?? '',
-      nombres: fields.nombres ?? '',
-      apellidos: fields.apellidos ?? '',
-      cedula: fields.cedula ?? '',
-      rif: fields.rif ?? ''
-    },
+    fields: normalizedFields,
+    fieldStatus,
     confidence: {
       documentNumber: confidence.documentNumber ?? 0.25,
       givenNames: confidence.givenNames ?? 0.25,
@@ -183,7 +219,7 @@ export async function validateDocumentWithLambda(file: File, docKind: DocKind): 
 
   const controller = new AbortController();
   // PDF puede tardar más por Textract asíncrono; imágenes suelen responder más rápido.
-  const requestTimeoutMs = isPdf ? 240000 : 180000;
+  const requestTimeoutMs = isPdf ? 240000 : 90000;
   const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
 
   try {

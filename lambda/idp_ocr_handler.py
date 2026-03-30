@@ -588,6 +588,91 @@ def detect_document_expiration_date(lines: List[str]) -> Optional[date]:
     return None
 
 
+def classify_field_status(value: Optional[str], applicable: bool = True) -> str:
+    if not applicable:
+        return "not_applicable"
+    return "detected" if (value or "").strip() else "not_detected"
+
+
+def build_extraction_diagnostics(
+    detected_type: str,
+    lines: List[str],
+    extracted: Dict[str, Optional[str]],
+    avg_conf: float,
+) -> Dict[str, str]:
+    diagnostics: Dict[str, str] = {
+        "ocrAverageBand": "high" if avg_conf >= 0.9 else ("medium" if avg_conf >= 0.75 else "low"),
+        "lineCount": str(len(lines)),
+    }
+
+    if detected_type != "CEDULA":
+        return diagnostics
+
+    apellido_label_seen = any(APELLIDO_LABEL.search(normalize_upper(line)) for line in lines)
+    nombre_label_seen = any(NOMBRE_LABEL.search(normalize_upper(line)) for line in lines)
+
+    if extracted.get("surnames"):
+        diagnostics["apellidosReason"] = "detected"
+    elif apellido_label_seen:
+        diagnostics["apellidosReason"] = "label_detected_value_rejected"
+    else:
+        diagnostics["apellidosReason"] = "label_not_detected"
+
+    if extracted.get("givenNames"):
+        diagnostics["nombresReason"] = "detected"
+    elif nombre_label_seen:
+        diagnostics["nombresReason"] = "label_detected_value_rejected"
+    else:
+        diagnostics["nombresReason"] = "label_not_detected"
+
+    return diagnostics
+
+
+def diagnostic_warning_for_missing_field(
+    field_name: str,
+    detected_type: str,
+    diagnostics: Dict[str, str],
+) -> str:
+    ocr_band = diagnostics.get("ocrAverageBand", "medium")
+    quality_tail = (
+        " Indicio: legibilidad OCR baja (posible brillo, desenfoque o compresión)."
+        if ocr_band == "low"
+        else " Indicio: zona del documento con ruido o contraste irregular."
+    )
+
+    if detected_type == "CEDULA" and field_name == "apellidos":
+        reason = diagnostics.get("apellidosReason", "")
+        if reason == "label_detected_value_rejected":
+            return (
+                "No se pudieron extraer apellidos: se detectó la etiqueta APELLIDOS, "
+                "pero el texto fue rechazado por baja confiabilidad."
+                + quality_tail
+            )
+        if reason == "label_not_detected":
+            return (
+                "No se pudieron extraer apellidos: no se detectó claramente la etiqueta/zona APELLIDOS."
+                + quality_tail
+            )
+        return "No se pudieron extraer apellidos con confianza."
+
+    if detected_type == "CEDULA" and field_name == "nombres":
+        reason = diagnostics.get("nombresReason", "")
+        if reason == "label_detected_value_rejected":
+            return (
+                "No se pudieron extraer nombres: se detectó la etiqueta NOMBRES, "
+                "pero el texto fue rechazado por baja confiabilidad."
+                + quality_tail
+            )
+        if reason == "label_not_detected":
+            return (
+                "No se pudieron extraer nombres: no se detectó claramente la etiqueta/zona NOMBRES."
+                + quality_tail
+            )
+        return "No se pudieron extraer nombres con confianza."
+
+    return f"No se pudo extraer {field_name} con confianza."
+
+
 def is_valid_for_slot(expected_type: str, detected_type: str) -> Tuple[bool, str]:
     if not expected_type:
         return True, "No se envió expectedDocumentType; se omite validación de slot."
@@ -614,49 +699,71 @@ def is_valid_for_slot(expected_type: str, detected_type: str) -> Tuple[bool, str
 
 
 def build_fields_payload(extracted: Dict[str, Optional[str]], detected_type: str) -> Dict[str, str]:
-    """
-    Mantengo nombres que el frontend probablemente ya usa,
-    pero reduzco duplicados peligrosos.
-    """
     document_number = extracted.get("documentNumber") or ""
     given_names = extracted.get("givenNames") or ""
     surnames = extracted.get("surnames") or ""
     company_name = extracted.get("companyName") or ""
 
     fields = {
-        "documentType": extracted.get("documentType") or "",
-        "documentNumber": document_number,
-        "numeroIdentificacion": document_number,
-        "givenNames": given_names,
-        "surnames": surnames,
         "nombres": given_names,
         "apellidos": surnames,
-        "companyName": company_name,
-        "razonSocial": company_name,
+        "numeroIdentificacion": document_number,
         "fechaVencimiento": "",
+        "razonSocial": company_name,
     }
-
-    # Compatibilidad hacia atrás
-    if detected_type == "CEDULA":
-        fields["cedula"] = document_number
-        fields["rif"] = ""
-    elif detected_type == "RIF":
-        fields["rif"] = document_number
-        fields["cedula"] = ""
-    else:
-        fields["cedula"] = ""
-        fields["rif"] = ""
 
     return fields
 
 
-def build_confidence_payload(fields: Dict[str, str], avg_conf: float) -> Dict[str, float]:
+def build_legacy_fields_payload(extracted: Dict[str, Optional[str]], detected_type: str, fields: Dict[str, str]) -> Dict[str, str]:
+    document_number = fields.get("numeroIdentificacion", "")
+    given_names = fields.get("nombres", "")
+    surnames = fields.get("apellidos", "")
+    company_name = fields.get("razonSocial", "")
+
+    legacy = {
+        "documentType": extracted.get("documentType") or "",
+        "documentNumber": document_number,
+        "givenNames": given_names,
+        "surnames": surnames,
+        "companyName": company_name,
+        "cedula": "",
+        "rif": "",
+    }
+
+    if detected_type == "CEDULA":
+        legacy["cedula"] = document_number
+    elif detected_type == "RIF":
+        legacy["rif"] = document_number
+
+    return legacy
+
+
+def build_field_status_payload(fields: Dict[str, str], detected_type: str) -> Dict[str, str]:
+    applicability = {
+        "nombres": detected_type == "CEDULA",
+        "apellidos": detected_type == "CEDULA",
+        "numeroIdentificacion": detected_type in ("CEDULA", "RIF"),
+        "fechaVencimiento": detected_type in ("CEDULA", "RIF"),
+        "razonSocial": detected_type == "RIF",
+    }
+
+    status: Dict[str, str] = {}
+    for key, is_applicable in applicability.items():
+        if not is_applicable:
+            status[key] = "not_applicable"
+        else:
+            status[key] = "detected" if (fields.get(key) or "").strip() else "not_detected"
+    return status
+
+
+def build_confidence_payload(fields: Dict[str, str], legacy_fields: Dict[str, str], avg_conf: float) -> Dict[str, float]:
     return {
-        "documentNumber": 0.90 if fields.get("documentNumber") else 0.25,
+        "documentNumber": 0.90 if legacy_fields.get("documentNumber") else 0.25,
         "numeroIdentificacion": 0.90 if fields.get("numeroIdentificacion") else 0.25,
-        "givenNames": 0.85 if fields.get("givenNames") else 0.25,
-        "surnames": 0.85 if fields.get("surnames") else 0.25,
-        "companyName": 0.85 if fields.get("companyName") else 0.25,
+        "givenNames": 0.85 if legacy_fields.get("givenNames") else 0.25,
+        "surnames": 0.85 if legacy_fields.get("surnames") else 0.25,
+        "companyName": 0.85 if legacy_fields.get("companyName") else 0.25,
         "ocrAverage": round(avg_conf, 3),
     }
 
@@ -720,16 +827,19 @@ def lambda_handler(event, context):
 
         warnings: List[str] = []
         avg_conf = (sum(confs) / len(confs) / 100.0) if confs else 0.0
+        diagnostics = build_extraction_diagnostics(detected_type, lines, extracted, avg_conf)
 
         if extraction_performed:
             if not extracted.get("documentNumber"):
-                warnings.append("No se pudo extraer número de documento con confianza.")
+                warnings.append(
+                    "No se pudo extraer número de identificación: no se encontró patrón confiable en el OCR."
+                )
 
             if detected_type == "CEDULA":
                 if not extracted.get("givenNames"):
-                    warnings.append("No se pudieron extraer nombres con confianza.")
+                    warnings.append(diagnostic_warning_for_missing_field("nombres", detected_type, diagnostics))
                 if not extracted.get("surnames"):
-                    warnings.append("No se pudieron extraer apellidos con confianza.")
+                    warnings.append(diagnostic_warning_for_missing_field("apellidos", detected_type, diagnostics))
 
             if detected_type == "RIF":
                 if not extracted.get("companyName"):
@@ -760,8 +870,9 @@ def lambda_handler(event, context):
 
         fields = build_fields_payload(extracted, detected_type)
         fields["fechaVencimiento"] = expiry_str
-
-        confidence = build_confidence_payload(fields, avg_conf)
+        field_status = build_field_status_payload(fields, detected_type)
+        legacy_fields = build_legacy_fields_payload(extracted, detected_type, fields)
+        confidence = build_confidence_payload(fields, legacy_fields, avg_conf)
 
         return safe_json_response(
             200,
@@ -773,10 +884,14 @@ def lambda_handler(event, context):
                 "fileKindDetected": file_kind,
                 "isExtractionPerformed": extraction_performed,
                 "fields": fields,
+                "fieldStatus": field_status,
+                # Compatibilidad hacia atrás (transición frontend)
+                "legacyFields": legacy_fields,
                 "confidence": confidence,
                 "warnings": warnings,
                 "expiryAlert": expiry_alert,
                 "ocrTextPreview": "\n".join(lines[:20]),  # útil para depurar sin devolver todo
+                "diagnostics": diagnostics,
             },
         )
 

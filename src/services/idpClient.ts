@@ -40,14 +40,9 @@ export async function extractIdentityWithIdp(result: UploadedDocumentResult): Pr
   try {
     const validated = await validateDocumentWithLambda(result.file, 'CEDULA');
 
-    const nombres = cleanNamePart(validated.fields.nombres || validated.fields.givenNames || '');
-    const apellidos = cleanNamePart(validated.fields.apellidos || validated.fields.surnames || '');
-    const cedula = normalizeId(
-      validated.fields.numeroIdentificacion ||
-      validated.fields.cedula ||
-      validated.fields.documentNumber ||
-      ''
-    );
+    const nombres = cleanNamePart(validated.fields.nombres || '');
+    const apellidos = cleanNamePart(validated.fields.apellidos || '');
+    const cedula = normalizeId(validated.fields.numeroIdentificacion || '');
 
     return {
       nombres: nombres || null,
