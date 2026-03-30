@@ -40,56 +40,6 @@ const stripNameLabels = (value?: string): string => {
     .trim();
 };
 
-const extractNamePartsFromPreview = (preview?: string): { nombres: string; apellidos: string } => {
-  if (!preview?.trim()) return { nombres: '', apellidos: '' };
-
-  const lines = preview
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  let nombres = '';
-  let apellidos = '';
-
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (!apellidos && /\bAPELL/i.test(line)) {
-      const inline = line.replace(/.*\bAPELL\w*\s*[:\-]?\s*/i, '').trim();
-      const next = lines[i + 1]?.trim() ?? '';
-      apellidos = inline || next;
-    }
-    if (!nombres && /\bNOMB/i.test(line)) {
-      const inline = line.replace(/.*\bNOMB\w*\s*[:\-]?\s*/i, '').trim();
-      const next = lines[i + 1]?.trim() ?? '';
-      nombres = inline || next;
-    }
-    if (nombres && apellidos) break;
-  }
-
-  return { nombres, apellidos };
-};
-
-const extractNamePartsFromMergedText = (text?: string): { nombres: string; apellidos: string } => {
-  if (!text?.trim()) return { nombres: '', apellidos: '' };
-  const compact = text.replace(/\s+/g, ' ').trim();
-
-  const surnameMatch = compact.match(/\bAPELL\w*\s*[:\-]?\s*([A-ZÁÉÍÓÚÑ\s]+?)(?=\s+\bNOMB\w*\b|$)/i);
-  const nameMatch = compact.match(/\bNOMB\w*\s*[:\-]?\s*([A-ZÁÉÍÓÚÑ\s]+?)(?=\s+\b(APELL\w*|FIRMA|DIRECTOR|VENEZOLANO)\b|$)/i);
-
-  return {
-    nombres: (nameMatch?.[1] ?? '').trim(),
-    apellidos: (surnameMatch?.[1] ?? '').trim()
-  };
-};
-
-const isMobileSafari = (): boolean => {
-  if (typeof navigator === 'undefined') return false;
-  const ua = navigator.userAgent;
-  const isiOS = /iP(hone|od|ad)/.test(ua);
-  const isSafari = /Safari/i.test(ua) && !/(CriOS|FxiOS|EdgiOS|OPiOS)/i.test(ua);
-  return isiOS && isSafari;
-};
-
 const getValidationAlertType = (status?: 'VALIDO' | 'REVISAR', message?: string): 'success' | 'warning' | 'error' | null => {
   if (status === 'VALIDO') return 'success';
   if (status !== 'REVISAR') return null;
@@ -206,32 +156,14 @@ export function DocumentSlot({
         ''
       ).trim();
 
-      const fallbackFromPreview = extractNamePartsFromPreview(backend.ocrTextPreview);
-      const safariFallback = isMobileSafari()
-        ? extractNamePartsFromMergedText(
-            [
-              backend.ocrTextPreview || '',
-              backend.fields.nombres || '',
-              backend.fields.givenNames || '',
-              backend.fields.apellidos || '',
-              backend.fields.surnames || ''
-            ].join(' ')
-          )
-        : { nombres: '', apellidos: '' };
-
       const nombresRaw = (
         backend.fields.nombres ||
         backend.fields.givenNames ||
-        fallbackFromPreview.nombres ||
-        safariFallback.nombres ||
-        companyName ||
         ''
       ).trim();
       const apellidosRaw = (
         backend.fields.apellidos ||
         backend.fields.surnames ||
-        fallbackFromPreview.apellidos ||
-        safariFallback.apellidos ||
         ''
       ).trim();
       const nombres = stripNameLabels(nombresRaw);

@@ -9,35 +9,6 @@ type IdpExtractedIdentity = {
 
 const IDP_URL = (import.meta.env.VITE_IDP_LAMBDA_URL ?? '').trim();
 
-const extractNamePartsFromPreview = (preview: string): { nombres: string; apellidos: string } => {
-  if (!preview.trim()) return { nombres: '', apellidos: '' };
-
-  const lines = preview
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  let nombres = '';
-  let apellidos = '';
-
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (!apellidos && /\bAPELL/i.test(line)) {
-      const inline = line.replace(/.*\bAPELL\w*\s*[:\-]?\s*/i, '').trim();
-      const next = lines[i + 1]?.trim() ?? '';
-      apellidos = inline || next;
-    }
-    if (!nombres && /\bNOMB/i.test(line)) {
-      const inline = line.replace(/.*\bNOMB\w*\s*[:\-]?\s*/i, '').trim();
-      const next = lines[i + 1]?.trim() ?? '';
-      nombres = inline || next;
-    }
-    if (nombres && apellidos) break;
-  }
-
-  return { nombres, apellidos };
-};
-
 const cleanNamePart = (value: string): string =>
   value
     .replace(/\s+/g, ' ')
@@ -68,10 +39,9 @@ export async function extractIdentityWithIdp(result: UploadedDocumentResult): Pr
 
   try {
     const validated = await validateDocumentWithLambda(result.file, 'CEDULA');
-    const fallbackFromPreview = extractNamePartsFromPreview(validated.ocrTextPreview || '');
 
-    const nombres = cleanNamePart(validated.fields.nombres || validated.fields.givenNames || fallbackFromPreview.nombres || '');
-    const apellidos = cleanNamePart(validated.fields.apellidos || validated.fields.surnames || fallbackFromPreview.apellidos || '');
+    const nombres = cleanNamePart(validated.fields.nombres || validated.fields.givenNames || '');
+    const apellidos = cleanNamePart(validated.fields.apellidos || validated.fields.surnames || '');
     const cedula = normalizeId(
       validated.fields.numeroIdentificacion ||
       validated.fields.cedula ||

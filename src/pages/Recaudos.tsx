@@ -5,7 +5,6 @@ import { DocumentSlot } from '../components/DocumentSlot';
 import { SelfieProof } from '../components/SelfieProof';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
 import { extractIdentityWithIdp, idpEnabled } from '../services/idpClient';
-import { extractCedulaAutofill, extractRifAutofill } from '../services/ocr/autofillExtraction';
 import type { CommerceImageItem, UploadedDocumentResult } from '../types/recaudos';
 
 type ModuleType = 'natural' | 'juridica';
@@ -91,19 +90,16 @@ export default function Recaudos() {
     }
 
     let cancelled = false;
-    const extracted = extractCedulaAutofill(cedula.rawText ?? '');
     const backendNombres = cedula.fields.nombres ?? '';
     const backendApellidos = cedula.fields.apellidos ?? '';
-    const nameSource = extracted.nombres && extracted.apellidos
-      ? `${extracted.nombres} ${extracted.apellidos}`
-      : [backendNombres, backendApellidos].filter(Boolean).join(' ').trim();
+    const nameSource = [backendNombres, backendApellidos].filter(Boolean).join(' ').trim();
     const { nombres, apellidos } = splitFullName(nameSource);
-    setNaturalNombres((extracted.nombres ?? backendNombres) || nombres);
-    setNaturalApellidos((extracted.apellidos ?? backendApellidos) || apellidos);
-    const cedulaNumero = extracted.cedula ?? cedula.fields.numeroId;
+    setNaturalNombres(backendNombres || nombres);
+    setNaturalApellidos(backendApellidos || apellidos);
+    const cedulaNumero = cedula.fields.numeroId;
     setNaturalCedulaId(cedulaNumero ?? '');
 
-    const shouldTryIdp = idpEnabled() && (!extracted.nombres || !extracted.apellidos);
+    const shouldTryIdp = idpEnabled() && (!backendNombres || !backendApellidos);
     if (shouldTryIdp) {
       setNaturalIdpLoading(true);
       void extractIdentityWithIdp(cedula).then((idp) => {
@@ -130,10 +126,9 @@ export default function Recaudos() {
       setJuridicaRifEmpresa('');
       return;
     }
-    const extracted = extractRifAutofill(rif.rawText ?? '');
-    const razonSocial = extracted.razonSocial ?? rif.fields.nombres ?? '';
+    const razonSocial = rif.fields.nombres ?? '';
     setJuridicaRazonSocial(razonSocial);
-    const rifNumero = extracted.rif ?? rif.fields.numeroId;
+    const rifNumero = rif.fields.numeroId;
     setJuridicaRifEmpresa(rifNumero ?? '');
   }, [juridicaRif]);
 
@@ -148,19 +143,16 @@ export default function Recaudos() {
     }
 
     let cancelled = false;
-    const extracted = extractCedulaAutofill(rep.rawText ?? '');
     const backendNombres = rep.fields.nombres ?? '';
     const backendApellidos = rep.fields.apellidos ?? '';
-    const nameSource = extracted.nombres && extracted.apellidos
-      ? `${extracted.nombres} ${extracted.apellidos}`
-      : [backendNombres, backendApellidos].filter(Boolean).join(' ').trim();
+    const nameSource = [backendNombres, backendApellidos].filter(Boolean).join(' ').trim();
     const { nombres, apellidos } = splitFullName(nameSource);
-    setRepNombres((extracted.nombres ?? backendNombres) || nombres);
-    setRepApellidos((extracted.apellidos ?? backendApellidos) || apellidos);
-    const cedulaNumero = extracted.cedula ?? rep.fields.numeroId;
+    setRepNombres(backendNombres || nombres);
+    setRepApellidos(backendApellidos || apellidos);
+    const cedulaNumero = rep.fields.numeroId;
     setRepCedula(cedulaNumero ?? '');
 
-    const shouldTryIdp = idpEnabled() && (!extracted.nombres || !extracted.apellidos);
+    const shouldTryIdp = idpEnabled() && (!backendNombres || !backendApellidos);
     if (shouldTryIdp) {
       setRepIdpLoading(true);
       void extractIdentityWithIdp(rep).then((idp) => {
