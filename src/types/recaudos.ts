@@ -37,13 +37,13 @@ export type PerceptionFeatures = {
 
 export type CommerceImageAnalysis = {
   description: string;
-  features: PerceptionFeatures;
+  features?: PerceptionFeatures;
   detectedCategory: DetectedBusinessImageCategory;
   requestedCategory: BusinessImageCategory;
   categoryMatch: boolean;
   categoryProbability: number;
   expectedTypeProbability: number;
-  aiGeneratedProbability: number;
+  aiGeneratedProbability?: number;
   validationResult: ValidationResult;
   mismatchReason: MismatchReason;
   warnings: string[];

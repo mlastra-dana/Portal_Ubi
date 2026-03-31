@@ -18,12 +18,12 @@ export type PerceptionResult = {
 
 export type BusinessImageAnalysisResult = {
   description: string;
-  features: PerceptionFeatures;
+  features?: PerceptionFeatures;
   detectedCategory: DetectedBusinessCategory;
   requestedCategory: RequestedBusinessCategory;
   categoryMatch: boolean;
   categoryProbability: number;
-  aiGeneratedProbability: number;
+  aiGeneratedProbability?: number;
   validationResult: ValidationResult;
   mismatchReason: MismatchReason;
   warnings: string[];

@@ -2,46 +2,44 @@ import base64
 import json
 import os
 import re
-import time
 import unicodedata
-import uuid
 from datetime import date, datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import boto3
 
-textract = boto3.client("textract")
-s3 = boto3.client("s3")
-
-# Mantengo tus variables de entorno exactamente iguales
+# Mantengo tus variables actuales aunque esta versión no use Textract/S3
 DOCUMENT_OCR_BUCKET = os.getenv("DOCUMENT_OCR_BUCKET", "").strip()
 DOCUMENT_OCR_POLL_SECONDS = float(os.getenv("DOCUMENT_OCR_POLL_SECONDS", "1.5"))
 DOCUMENT_OCR_MAX_WAIT_SECONDS = int(os.getenv("DOCUMENT_OCR_MAX_WAIT_SECONDS", "180"))
+
+BEDROCK_REGION = os.getenv("BEDROCK_REGION") or os.getenv("AWS_REGION") or "us-east-1"
+BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "").strip()
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(15 * 1024 * 1024)))
+
+bedrock = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
 
 RESPONSE_HEADERS = {
     "Content-Type": "application/json"
 }
 
-# Patrones conservadores
-CEDULA_RE = re.compile(r"\b([VE])\s*[-.]?\s*(\d(?:[\d.\s-]{5,12}\d))\b", re.IGNORECASE)
-RIF_RE = re.compile(r"\b([JGVEP])\s*[-.]?\s*(\d(?:[\d.\s-]{7,12}\d))\b", re.IGNORECASE)
-DATE_RE = re.compile(r"\b(\d{2})[/-](\d{2})[/-](\d{4})\b")
+ACCEPTED_IMAGE_MIME = {"image/jpeg", "image/png", "image/webp"}
+ACCEPTED_DOC_MIME = {"application/pdf", "image/jpeg", "image/png", "image/webp"}
 
-NOISE_WORDS = {
-    "CEDULA", "CÉDULA", "IDENTIDAD", "REPUBLICA", "BOLIVARIANA", "VENEZUELA",
-    "FIRMA", "TITULAR", "DIRECTOR", "NACIONALIDAD", "VENEZOLANO",
-    "EXPEDICION", "VENCIMIENTO", "FECHA", "NACIMIENTO", "CASADA", "CASADO", "SOLTERA", "SOLTERO",
-    "VIUDA", "VIUDO", "DIVORCIADA", "DIVORCIADO", "EDO", "CIVIL", "UNION", "LIBRE",
-    "CONTRIBUYENTE", "SENIAT", "REGISTRO", "MERCANTIL", "ACTA", "CONSTITUTIVA",
-    "NOMBRES", "NOMBRE", "APELLIDOS", "APELLIDO", "FUND", "AUTORIZADA",
-    "NUMERO", "NÚMERO", "DOC", "DOCUMENTO",
-    "CAMSCANNER", "ESCANEADO", "SCANNER"
-}
-TRAILING_GARBAGE = {"NA", "N", "A", "EA", "ER", "OD", "DI", "RR", "ZN"}
-CONNECTORS = {"DE", "DEL", "LA", "LAS", "LOS", "DA", "DAS", "DO", "DOS", "Y"}
+DATE_FULL_RE = re.compile(r"\b(\d{2})[/-](\d{2})[/-](\d{4})\b")
+DATE_MONTH_YEAR_RE = re.compile(r"\b(\d{2})[/-](\d{4})\b")
 
-APELLIDO_LABEL = re.compile(r"APELL|APELID|PELLID|ELLID|AVEL", re.IGNORECASE)
-NOMBRE_LABEL = re.compile(r"NOMB|NOMBR|NOMER|NOME|N0MB|NOM8|VOVER|VOBER|VOWER", re.IGNORECASE)
+
+# =========================
+# Helpers generales
+# =========================
+
+def safe_json_response(status_code: int, payload: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "statusCode": status_code,
+        "headers": RESPONSE_HEADERS,
+        "body": json.dumps(payload, ensure_ascii=False),
+    }
 
 
 def normalize_upper(value: str) -> str:
@@ -50,10 +48,6 @@ def normalize_upper(value: str) -> str:
         if unicodedata.category(c) != "Mn"
     )
     return no_acc.upper().strip()
-
-
-def normalize_spaces(value: str) -> str:
-    return re.sub(r"\s+", " ", value or "").strip()
 
 
 def normalize_doc_type(value: str) -> str:
@@ -65,21 +59,24 @@ def normalize_doc_type(value: str) -> str:
         "CEDULA": "CEDULA",
         "CÉDULA": "CEDULA",
         "RIF": "RIF",
-        "PASAPORTE": "PASAPORTE",
-        "LICENCIA": "LICENCIA",
+        "OTRO": "OTRO",
     }
     return aliases.get(v, "OTRO" if v else "")
 
 
-def safe_json_response(status_code: int, payload: Dict) -> Dict:
-    return {
-        "statusCode": status_code,
-        "headers": RESPONSE_HEADERS,
-        "body": json.dumps(payload, ensure_ascii=False),
+def normalize_requested_category(value: str) -> str:
+    v = normalize_upper(value or "")
+    aliases = {
+        "FACHADA": "FACHADA",
+        "INTERIOR": "INTERIOR",
+        "INTERIOR_DE_NEGOCIO": "INTERIOR",
+        "INVENTARIO": "INVENTARIO",
+        "INVENTARIO_DE_NEGOCIO": "INVENTARIO",
     }
+    return aliases.get(v, v)
 
 
-def parse_event_json(event: Dict) -> Dict:
+def parse_event_json(event: Dict[str, Any]) -> Dict[str, Any]:
     body = event.get("body", "")
     if event.get("isBase64Encoded"):
         try:
@@ -97,803 +94,574 @@ def parse_event_json(event: Dict) -> Dict:
 def parse_b64_payload(raw: str) -> Tuple[bytes, str]:
     if not raw:
         raise ValueError("fileBase64 vacío")
+
     cleaned = raw.strip()
     mime_hint = ""
+
     if cleaned.startswith("data:") and ";base64," in cleaned:
         header, b64_part = cleaned.split(";base64,", 1)
         mime_hint = header.replace("data:", "").strip().lower()
         cleaned = b64_part
+
     cleaned = cleaned.replace(" ", "+")
     return base64.b64decode(cleaned), mime_hint
 
 
-def detect_file_kind(file_bytes: bytes, mime_hint: str = "", file_name: str = "", content_type: str = "") -> str:
-    mh = (mime_hint or content_type or "").lower()
-    fn = (file_name or "").lower()
+def detect_mime(mime_hint: str = "", content_type: str = "", file_name: str = "") -> str:
+    mh = (mime_hint or content_type or "").lower().strip()
+    fn = (file_name or "").lower().strip()
 
-    if "pdf" in mh or fn.endswith(".pdf"):
+    if mh:
+        return mh
+    if fn.endswith(".pdf"):
+        return "application/pdf"
+    if fn.endswith(".jpg") or fn.endswith(".jpeg"):
+        return "image/jpeg"
+    if fn.endswith(".png"):
+        return "image/png"
+    if fn.endswith(".webp"):
+        return "image/webp"
+    return ""
+
+
+def mime_to_image_format(mime: str) -> str:
+    if mime == "image/png":
+        return "png"
+    if mime == "image/webp":
+        return "webp"
+    return "jpeg"
+
+
+def document_format_from_mime(mime: str, file_name: str) -> str:
+    if mime == "application/pdf" or (file_name or "").lower().endswith(".pdf"):
         return "pdf"
-    if "jpeg" in mh or "jpg" in mh or "png" in mh or fn.endswith(".jpg") or fn.endswith(".jpeg") or fn.endswith(".png"):
-        return "image"
-
-    if file_bytes.startswith(b"%PDF"):
-        return "pdf"
-    if file_bytes.startswith(b"\xff\xd8\xff") or file_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "image"
-
-    return "image"
+    if mime == "image/png":
+        return "png"
+    if mime == "image/webp":
+        return "webp"
+    return "jpeg"
 
 
-def textract_lines_from_image_bytes(image_bytes: bytes) -> Tuple[List[str], List[float]]:
-    response = textract.detect_document_text(Document={"Bytes": image_bytes})
-    lines, confs = [], []
-    for block in response.get("Blocks", []):
-        if block.get("BlockType") == "LINE":
-            text = normalize_spaces(block.get("Text") or "")
-            if text:
-                lines.append(text)
-                confs.append(float(block.get("Confidence", 0.0)))
-    return lines, confs
+def parse_json_from_text(text: str) -> Dict[str, Any]:
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("La respuesta del modelo no contiene JSON válido.")
+    return json.loads(text[start:end + 1])
 
 
-def textract_lines_from_pdf_bytes(pdf_bytes: bytes) -> Tuple[List[str], List[float]]:
-    if not DOCUMENT_OCR_BUCKET:
-        raise ValueError("PDF recibido, pero falta variable DOCUMENT_OCR_BUCKET.")
-
-    key = f"document-ocr-input/{uuid.uuid4()}.pdf"
-    s3.put_object(Bucket=DOCUMENT_OCR_BUCKET, Key=key, Body=pdf_bytes, ContentType="application/pdf")
-
-    try:
-        start_resp = textract.start_document_text_detection(
-            DocumentLocation={"S3Object": {"Bucket": DOCUMENT_OCR_BUCKET, "Name": key}}
-        )
-        job_id = start_resp["JobId"]
-
-        deadline = time.time() + DOCUMENT_OCR_MAX_WAIT_SECONDS
-        status = "IN_PROGRESS"
-
-        while time.time() < deadline:
-            page = textract.get_document_text_detection(JobId=job_id, MaxResults=1000)
-            status = page.get("JobStatus", "IN_PROGRESS")
-            if status in ("SUCCEEDED", "FAILED", "PARTIAL_SUCCESS"):
-                break
-            time.sleep(DOCUMENT_OCR_POLL_SECONDS)
-
-        if status not in ("SUCCEEDED", "PARTIAL_SUCCESS"):
-            raise RuntimeError(f"Textract PDF no completó correctamente. Estado: {status}")
-
-        lines, confs = [], []
-        next_token = None
-        while True:
-            if next_token:
-                page = textract.get_document_text_detection(JobId=job_id, MaxResults=1000, NextToken=next_token)
-            else:
-                page = textract.get_document_text_detection(JobId=job_id, MaxResults=1000)
-
-            for block in page.get("Blocks", []):
-                if block.get("BlockType") == "LINE":
-                    text = normalize_spaces(block.get("Text") or "")
-                    if text:
-                        lines.append(text)
-                        confs.append(float(block.get("Confidence", 0.0)))
-
-            next_token = page.get("NextToken")
-            if not next_token:
-                break
-
-        return lines, confs
-    finally:
-        try:
-            s3.delete_object(Bucket=DOCUMENT_OCR_BUCKET, Key=key)
-        except Exception:
-            pass
-
-
-def textract_lines(file_bytes: bytes, file_kind: str) -> Tuple[List[str], List[float]]:
-    if file_kind == "pdf":
-        return textract_lines_from_pdf_bytes(file_bytes)
-    return textract_lines_from_image_bytes(file_bytes)
-
-
-def detect_document_type(text: str) -> str:
-    normalized = normalize_upper(text)
-
-    acta_signals = [
-        "ACTA CONSTITUTIVA",
-        "DOCUMENTO CONSTITUTIVO",
-        "REGISTRO MERCANTIL",
-        "PROTOCOLO",
-        "TOMO",
-        "ASAMBLEA",
-        "ESTATUTOS",
-    ]
-    rif_signals = [
-        "RIF",
-        "SENIAT",
-        "CONTRIBUYENTE",
-        "REGISTRO DE INFORMACION FISCAL",
-    ]
-    cedula_signals = [
-        "CEDULA",
-        "CÉDULA",
-        "IDENTIDAD",
-        "REPUBLICA BOLIVARIANA",
-    ]
-
-    if any(sig in normalized for sig in acta_signals):
-        return "ACTA_CONSTITUTIVA"
-    if any(sig in normalized for sig in rif_signals):
-        return "RIF"
-    if any(sig in normalized for sig in cedula_signals):
-        return "CEDULA"
-
-    # refuerzo por patrón cuando el título no salió bien en OCR
-    if RIF_RE.search(normalized):
-        return "RIF"
-    if CEDULA_RE.search(normalized):
-        return "CEDULA"
-
-    return "OTRO"
-
-
-def clean_person_text(value: str) -> str:
-    text = re.sub(r"\bESCANEADO\s+CON\s+CAMSCANNER\b.*$", " ", value, flags=re.IGNORECASE)
-    text = re.sub(r"\bCAMSCANNER\b.*$", " ", text, flags=re.IGNORECASE)
-    text = re.sub(r"\b(NA\)|N\)|DIRECTOR|TITULAR|FIRMA|AUTORIZADA)\b.*$", " ", text, flags=re.IGNORECASE)
-    text = re.sub(r"[^A-Za-zÁÉÍÓÚÑáéíóúñ\s]", " ", text)
-    text = normalize_spaces(text)
-
-    tokens = []
-    for t in text.split():
-        if normalize_upper(t) in NOISE_WORDS:
-            continue
-        tokens.append(t)
-
-    while tokens:
-        tail = tokens[-1]
-        upper_tail = normalize_upper(tail)
-        if upper_tail in TRAILING_GARBAGE:
-            tokens.pop()
-            continue
-        if len(tail) <= 2 and upper_tail not in CONNECTORS:
-            tokens.pop()
-            continue
-        break
-
-    while tokens and normalize_upper(tokens[-1]) in CONNECTORS:
-        tokens.pop()
-
-    return " ".join(tokens).strip()
-
-
-def strip_name_label(line: str, label_kind: str) -> str:
-    if label_kind == "surname":
-        label_match = re.search(r"\b(APELLIDOS?|APELIDOS?|PELLID|ELLID|AVEL)\b", line, flags=re.IGNORECASE)
-        if label_match:
-            tail = line[label_match.end():]
-            return re.sub(r"^\s*[:\-]?\s*", "", tail).strip()
-        return line.strip()
-
-    label_match = re.search(r"\b(N\w{0,4}OMB\w*|NOMER\w*|NOME\w*|VOW?ER\w*|N0MB\w*|NOM8\w*)\b", line, flags=re.IGNORECASE)
-    if label_match:
-        tail = line[label_match.end():]
-        return re.sub(r"^\s*[:\-]?\s*", "", tail).strip()
-    return line.strip()
-
-
-def fix_person_field(value: str) -> str:
-    cleaned = clean_person_text(value)
-    cleaned = re.sub(r"^(NOMBRES?|APELLIDOS?)\s+", "", cleaned, flags=re.IGNORECASE).strip()
-    return cleaned
-
-
-def score_person_candidate(value: str) -> int:
-    candidate = clean_person_text(value)
-    if not candidate:
-        return -1
-    parts = candidate.split()
-    if len(parts) < 2 or len(parts) > 8:
-        return -1
-    if any(any(ch.isdigit() for ch in p) for p in parts):
-        return -1
-    long_words = sum(1 for p in parts if len(p) >= 3)
-    return long_words * 3 + len(candidate)
-
-
-def pick_best_person_candidate(candidates: List[str]) -> str:
-    scored = []
-    for c in candidates:
-        cleaned = clean_person_text(c)
-        score = score_person_candidate(cleaned)
-        if score >= 0:
-            scored.append((cleaned, score))
-    scored.sort(key=lambda x: (x[1], len(x[0])), reverse=True)
-    return scored[0][0] if scored else ""
-
-
-def is_likely_ddmmyyyy(digits: str) -> bool:
-    if not re.fullmatch(r"\d{8}", digits):
-        return False
-    dd, mm, yyyy = int(digits[:2]), int(digits[2:4]), int(digits[4:])
-    return 1 <= dd <= 31 and 1 <= mm <= 12 and 1900 <= yyyy <= 2099
-
-
-def normalize_doc_number(raw: str, expected: str) -> Optional[str]:
-    compact = (
-        (raw or "").upper()
-        .replace(" ", "")
-        .replace(".", "")
-        .replace("-", "")
-        .replace("O", "0")
-        .replace("Q", "0")
-        .replace("I", "1")
-        .replace("L", "1")
-        .replace("S", "5")
-        .replace("B", "8")
-    )
-
-    if expected == "CEDULA":
-        if re.fullmatch(r"[VE]\d{6,10}", compact):
-            if is_likely_ddmmyyyy(compact[1:]):
-                return None
-            return compact
-        if re.fullmatch(r"\d{6,10}", compact):
-            if is_likely_ddmmyyyy(compact):
-                return None
-            return "V" + compact
-        return None
-
-    if expected == "RIF":
-        if re.fullmatch(r"[JGVEP]\d{8,10}", compact):
-            return compact
-        return None
-
-    return compact or None
-
-
-def build_official_signature_noise(lines: List[str]) -> List[str]:
-    noise = []
-    for i, line in enumerate(lines):
-        up = normalize_upper(line)
-        if "DIRECTOR" in up or "AUTORIZADA" in up:
-            same = re.sub(r"\b(DIRECTOR|AUTORIZADA)\b", " ", line, flags=re.IGNORECASE)
-            same = fix_person_field(same)
-            if score_person_candidate(same) >= 0:
-                noise.append(same)
-
-            if i > 0:
-                prev = fix_person_field(lines[i - 1])
-                if score_person_candidate(prev) >= 0:
-                    noise.append(prev)
-
-            cleaned_line = fix_person_field(line)
-            if score_person_candidate(cleaned_line) >= 0:
-                noise.append(cleaned_line)
-
-    dedup = []
+def dedupe_list(items: List[str]) -> List[str]:
+    out: List[str] = []
     seen = set()
-    for n in noise:
-        key = normalize_upper(n)
-        if key and key not in seen:
-            seen.add(key)
-            dedup.append(n)
-    return dedup
-
-
-def remove_official_noise(candidate: str, official_noise: List[str]) -> str:
-    out = (candidate or "").strip()
-    up_out = normalize_upper(out)
-
-    for n in official_noise:
-        up_n = normalize_upper(n)
-        if not up_n:
+    for item in items:
+        value = (item or "").strip()
+        if not value:
             continue
-        if up_out.endswith(" " + up_n):
-            out = out[:len(out) - len(n) - 1].strip()
-            up_out = normalize_upper(out)
-        elif up_out == up_n:
-            out = ""
-            up_out = ""
-
-    return out.strip()
+        if value not in seen:
+            out.append(value)
+            seen.add(value)
+    return out
 
 
-def extract_labeled_name_from_joined(joined: str, label: str, stop_label: str) -> str:
-    compact = normalize_spaces(joined)
-    pattern = rf"\b{label}\w*\s*[:\-]?\s*([A-ZÁÉÍÓÚÑ\s]{{3,80}}?)(?=\s+\b{stop_label}\w*\b|$)"
-    match = re.search(pattern, compact, flags=re.IGNORECASE)
-    if not match:
+def clean_text_value(value: Any) -> str:
+    if value is None:
         return ""
-    return fix_person_field(match.group(1))
+    return str(value).strip()
 
 
-def extract_identity_from_cedula(lines: List[str], joined: str) -> Dict[str, Optional[str]]:
-    names, surnames = "", ""
-    official_noise = build_official_signature_noise(lines)
+def _parse_expiry_date(text: str) -> Optional[date]:
+    value = clean_text_value(text)
 
-    for i, line in enumerate(lines):
-        normalized = normalize_upper(line)
-        next_line = lines[i + 1] if i + 1 < len(lines) else ""
-
-        if not surnames and APELLIDO_LABEL.search(normalized):
-            same_line = fix_person_field(strip_name_label(line, "surname"))
-            same_line = remove_official_noise(same_line, official_noise)
-            if score_person_candidate(same_line) >= 0:
-                surnames = same_line
-            else:
-                alt = fix_person_field(next_line)
-                alt = remove_official_noise(alt, official_noise)
-                if score_person_candidate(alt) >= 0:
-                    surnames = alt
-
-        if not names and NOMBRE_LABEL.search(normalized):
-            same_line = fix_person_field(strip_name_label(line, "name"))
-            same_line = remove_official_noise(same_line, official_noise)
-            if score_person_candidate(same_line) >= 0:
-                names = same_line
-            else:
-                alt = fix_person_field(next_line)
-                alt = remove_official_noise(alt, official_noise)
-                if score_person_candidate(alt) >= 0:
-                    names = alt
-
-    # fallback por texto unificado cuando OCR junta etiquetas en una sola línea.
-    if not surnames:
-        from_joined = remove_official_noise(
-            extract_labeled_name_from_joined(joined, "APELL", "NOMB"),
-            official_noise,
-        )
-        if score_person_candidate(from_joined) >= 0:
-            surnames = from_joined
-
-    if not names:
-        from_joined = remove_official_noise(
-            extract_labeled_name_from_joined(joined, "NOMB", "FIRMA"),
-            official_noise,
-        )
-        if score_person_candidate(from_joined) >= 0:
-            names = from_joined
-
-    if not names or not surnames:
-        conservative_candidates = []
-        for line in lines:
-            upper = normalize_upper(line)
-            if any(x in upper for x in ("DIRECTOR", "FIRMA", "TITULAR", "VENEZOLANO", "EXPEDICION", "VENCIMIENTO")):
-                continue
-            cleaned = fix_person_field(line)
-            cleaned = remove_official_noise(cleaned, official_noise)
-            if score_person_candidate(cleaned) >= 0:
-                conservative_candidates.append(cleaned)
-
-        if not names:
-            names = pick_best_person_candidate(conservative_candidates)
-        if not surnames and conservative_candidates:
-            for c in conservative_candidates:
-                if c != names:
-                    surnames = c
-                    break
-
-    # extracción de número MUCHO más conservadora
-    doc_num = None
-
-    m = CEDULA_RE.search(joined)
+    m = DATE_FULL_RE.search(value)
     if m:
-        doc_num = normalize_doc_number(f"{m.group(1)}{m.group(2)}", "CEDULA")
+        dd, mm, yyyy = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        try:
+            return datetime(yyyy, mm, dd).date()
+        except ValueError:
+            return None
 
-    if not doc_num:
-        for line in lines:
-            m_line = CEDULA_RE.search(line)
-            if m_line:
-                doc_num = normalize_doc_number(f"{m_line.group(1)}{m_line.group(2)}", "CEDULA")
-                if doc_num:
-                    break
-
-    # fallback tolerante, pero solo si hay prefijo V/E cerca
-    if not doc_num:
-        rough_hits = re.findall(r"\b[VE]\s*[-.]?\s*\d[\d.\s-]{5,12}\d\b", joined, flags=re.IGNORECASE)
-        for hit in rough_hits:
-            doc_num = normalize_doc_number(hit, "CEDULA")
-            if doc_num:
-                break
-
-    return {
-        "documentType": "CEDULA",
-        "documentNumber": doc_num,
-        "givenNames": names or None,
-        "surnames": surnames or None,
-        "companyName": None,
-    }
-
-
-def extract_identity_from_rif(lines: List[str], joined: str) -> Dict[str, Optional[str]]:
-    rif = None
-
-    m = RIF_RE.search(joined)
-    if m:
-        rif = normalize_doc_number(f"{m.group(1)}{m.group(2)}", "RIF")
-
-    if not rif:
-        for line in lines:
-            m_line = RIF_RE.search(line)
-            if m_line:
-                rif = normalize_doc_number(f"{m_line.group(1)}{m_line.group(2)}", "RIF")
-                if rif:
-                    break
-
-    company_name = ""
-    for i, line in enumerate(lines):
-        norm = normalize_upper(line)
-        if "RAZON SOCIAL" in norm or "RAZÓN SOCIAL" in norm or "DENOMINACION" in norm or "DENOMINACIÓN" in norm:
-            cleaned = re.sub(r".*(RAZ[ÓO]N\s+SOCIAL|DENOMINACI[ÓO]N)\s*[:\-]?", "", line, flags=re.IGNORECASE)
-            if cleaned.strip():
-                company_name = clean_person_text(cleaned)
-            elif i + 1 < len(lines):
-                company_name = clean_person_text(lines[i + 1])
-            break
-
-    if not company_name:
-        candidates = []
-        for line in lines:
-            cleaned = clean_person_text(line)
-            upper = normalize_upper(cleaned)
-            if not cleaned:
-                continue
-            if len(cleaned.split()) < 2:
-                continue
-            if any(x in upper for x in ["SENIAT", "RIF", "FECHA", "DOMICILIO", "CONTRIBUYENTE", "CERTIFICADO"]):
-                continue
-            candidates.append(cleaned)
-        company_name = pick_best_person_candidate(candidates)
-
-    return {
-        "documentType": "RIF",
-        "documentNumber": rif,
-        "givenNames": None,
-        "surnames": None,
-        "companyName": company_name or None,
-    }
-
-
-def _parse_ddmmyyyy(text: str) -> Optional[date]:
-    m = DATE_RE.search(text or "")
-    if not m:
-        return None
-    dd, mm, yyyy = int(m.group(1)), int(m.group(2)), int(m.group(3))
-    try:
-        return datetime(yyyy, mm, dd).date()
-    except ValueError:
-        return None
-
-
-def detect_document_expiration_date(lines: List[str]) -> Optional[date]:
-    keyed_candidates: List[date] = []
-
-    for i, line in enumerate(lines):
-        upper = normalize_upper(line)
-        line_date = _parse_ddmmyyyy(line)
-
-        has_expiry_keyword = any(k in upper for k in ("VENC", "VENCE", "VIGENCIA", "CADUC"))
-
-        if has_expiry_keyword:
-            if line_date:
-                keyed_candidates.append(line_date)
-            if i + 1 < len(lines):
-                next_date = _parse_ddmmyyyy(lines[i + 1])
-                if next_date:
-                    keyed_candidates.append(next_date)
-
-    if keyed_candidates:
-        return max(keyed_candidates)
+    m2 = DATE_MONTH_YEAR_RE.search(value)
+    if m2:
+        mm, yyyy = int(m2.group(1)), int(m2.group(2))
+        try:
+            # usar el primer día del mes como referencia mínima
+            return datetime(yyyy, mm, 1).date()
+        except ValueError:
+            return None
 
     return None
 
 
-def classify_field_status(value: Optional[str], applicable: bool = True) -> str:
-    if not applicable:
-        return "not_applicable"
-    return "detected" if (value or "").strip() else "not_detected"
+# =========================
+# Bedrock
+# =========================
 
+def invoke_bedrock(
+    user_content: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    if not BEDROCK_MODEL_ID:
+        raise RuntimeError("BEDROCK_MODEL_ID no configurado.")
 
-def build_extraction_diagnostics(
-    detected_type: str,
-    lines: List[str],
-    extracted: Dict[str, Optional[str]],
-    avg_conf: float,
-) -> Dict[str, str]:
-    diagnostics: Dict[str, str] = {
-        "ocrAverageBand": "high" if avg_conf >= 0.9 else ("medium" if avg_conf >= 0.75 else "low"),
-        "lineCount": str(len(lines)),
-    }
-
-    if detected_type != "CEDULA":
-        return diagnostics
-
-    apellido_label_seen = any(APELLIDO_LABEL.search(normalize_upper(line)) for line in lines)
-    nombre_label_seen = any(NOMBRE_LABEL.search(normalize_upper(line)) for line in lines)
-
-    if extracted.get("surnames"):
-        diagnostics["apellidosReason"] = "detected"
-    elif apellido_label_seen:
-        diagnostics["apellidosReason"] = "label_detected_value_rejected"
-    else:
-        diagnostics["apellidosReason"] = "label_not_detected"
-
-    if extracted.get("givenNames"):
-        diagnostics["nombresReason"] = "detected"
-    elif nombre_label_seen:
-        diagnostics["nombresReason"] = "label_detected_value_rejected"
-    else:
-        diagnostics["nombresReason"] = "label_not_detected"
-
-    return diagnostics
-
-
-def diagnostic_warning_for_missing_field(
-    field_name: str,
-    detected_type: str,
-    diagnostics: Dict[str, str],
-) -> str:
-    ocr_band = diagnostics.get("ocrAverageBand", "medium")
-    quality_tail = (
-        " Indicio: legibilidad OCR baja (posible brillo, desenfoque o compresión)."
-        if ocr_band == "low"
-        else " Indicio: zona del documento con ruido o contraste irregular."
+    response = bedrock.converse(
+        modelId=BEDROCK_MODEL_ID,
+        messages=[
+            {
+                "role": "user",
+                "content": user_content
+            }
+        ],
+        inferenceConfig={
+            "maxTokens": 1600,
+            "temperature": 0,
+            "topP": 1
+        },
+        additionalModelRequestFields={
+            "top_k": 250
+        }
     )
 
-    if detected_type == "CEDULA" and field_name == "apellidos":
-        reason = diagnostics.get("apellidosReason", "")
-        if reason == "label_detected_value_rejected":
-            return (
-                "No se pudieron extraer apellidos: se detectó la etiqueta APELLIDOS, "
-                "pero el texto fue rechazado por baja confiabilidad."
-                + quality_tail
-            )
-        if reason == "label_not_detected":
-            return (
-                "No se pudieron extraer apellidos: no se detectó claramente la etiqueta/zona APELLIDOS."
-                + quality_tail
-            )
-        return "No se pudieron extraer apellidos con confianza."
-
-    if detected_type == "CEDULA" and field_name == "nombres":
-        reason = diagnostics.get("nombresReason", "")
-        if reason == "label_detected_value_rejected":
-            return (
-                "No se pudieron extraer nombres: se detectó la etiqueta NOMBRES, "
-                "pero el texto fue rechazado por baja confiabilidad."
-                + quality_tail
-            )
-        if reason == "label_not_detected":
-            return (
-                "No se pudieron extraer nombres: no se detectó claramente la etiqueta/zona NOMBRES."
-                + quality_tail
-            )
-        return "No se pudieron extraer nombres con confianza."
-
-    return f"No se pudo extraer {field_name} con confianza."
+    content = response.get("output", {}).get("message", {}).get("content", [])
+    model_text = "".join(item.get("text", "") for item in content if "text" in item)
+    return parse_json_from_text(model_text)
 
 
-def is_valid_for_slot(expected_type: str, detected_type: str) -> Tuple[bool, str]:
-    if not expected_type:
-        return True, "No se envió expectedDocumentType; se omite validación de slot."
+# =========================
+# Prompts
+# =========================
 
-    exp = normalize_doc_type(expected_type)
-    det = normalize_doc_type(detected_type)
+def build_document_prompt(expected_document_type: str) -> str:
+    expected = normalize_doc_type(expected_document_type or "")
 
-    if exp == det:
-        return True, f"Documento detectado ({det}) coincide con el esperado ({exp})."
+    return f"""
+Eres un sistema de validación documental y extracción de campos para onboarding de comercios en Venezuela.
 
-    article = "un"
-    if exp == "CEDULA":
-        label = "cédula"
-        article = "una"
-    elif exp == "RIF":
-        label = "RIF"
-    elif exp == "ACTA_CONSTITUTIVA":
-        label = "acta constitutiva / registro mercantil"
-        article = "un"
-    else:
-        label = exp
+Analiza UN documento y responde SOLO JSON válido.
+No agregues texto fuera del JSON.
+No inventes ningún dato.
+Si un campo no se ve con suficiente claridad, devuélvelo vacío.
 
-    return False, f"El archivo cargado no corresponde a {article} {label}."
+TIPOS DOCUMENTALES PERMITIDOS:
+- CEDULA
+- RIF
+- ACTA_CONSTITUTIVA
+- OTRO
+
+REGLAS:
+- expectedDocumentType = "{expected}"
+- Debes detectar el tipo documental real en documentTypeDetected.
+- REGISTRO MERCANTIL debe tratarse como ACTA_CONSTITUTIVA.
+- Si no coincide con el slot esperado, isValidForSlot debe ser false.
+- No inventes campos del formulario.
+- Solo llena campos que realmente se vean.
+- Para CEDULA:
+  - nombres
+  - apellidos
+  - numeroIdentificacion
+  - fechaVencimiento
+- Para RIF:
+  - numeroIdentificacion
+  - fechaVencimiento
+  - razonSocial
+- Para ACTA_CONSTITUTIVA:
+  - no rellenes campos del formulario
+- fieldStatus por campo debe ser:
+  - detected
+  - not_detected
+  - not_applicable
+
+RESPONDE SOLO ESTE JSON:
+{{
+  "documentTypeDetected": "CEDULA | RIF | ACTA_CONSTITUTIVA | OTRO",
+  "isValidForSlot": true,
+  "slotValidationReason": "string",
+  "ocrTextPreview": "resumen breve del texto relevante visible, máximo 12 líneas o menos",
+  "fields": {{
+    "nombres": "",
+    "apellidos": "",
+    "numeroIdentificacion": "",
+    "fechaVencimiento": "",
+    "razonSocial": ""
+  }},
+  "fieldStatus": {{
+    "nombres": "detected | not_detected | not_applicable",
+    "apellidos": "detected | not_detected | not_applicable",
+    "numeroIdentificacion": "detected | not_detected | not_applicable",
+    "fechaVencimiento": "detected | not_detected | not_applicable",
+    "razonSocial": "detected | not_detected | not_applicable"
+  }},
+  "warnings": []
+}}
+""".strip()
 
 
-def build_fields_payload(extracted: Dict[str, Optional[str]], detected_type: str) -> Dict[str, str]:
-    document_number = extracted.get("documentNumber") or ""
-    given_names = extracted.get("givenNames") or ""
-    surnames = extracted.get("surnames") or ""
-    company_name = extracted.get("companyName") or ""
+def build_business_image_prompt(requested_category: str) -> str:
+    requested = normalize_requested_category(requested_category or "")
 
-    fields = {
-        "nombres": given_names,
-        "apellidos": surnames,
-        "numeroIdentificacion": document_number,
-        "fechaVencimiento": "",
-        "razonSocial": company_name,
-    }
+    return f"""
+Eres un sistema de validación visual para onboarding de comercios.
 
-    return fields
+Analiza UNA imagen y responde SOLO JSON válido.
+No agregues texto fuera del JSON.
+
+La categoría solicitada es:
+- "{requested}"
+
+CATEGORÍAS VISUALES POSIBLES:
+- FACHADA
+- INTERIOR
+- INVENTARIO
+- PERSONA
+- NO_CLASIFICADA
+
+REGLAS:
+- Describe solo lo que realmente ves.
+- No inventes contexto comercial si no es visible.
+- Si aparece una persona/selfie como elemento principal y no corresponde al tipo solicitado, eso debe reflejarse como NO_COINCIDE.
+- Si la imagen corresponde claramente a la categoría solicitada:
+  validationResult = "VALIDADA"
+- Si no corresponde:
+  validationResult = "NO_COINCIDE"
+- Si es ambigua o poco clara:
+  validationResult = "REVISAR"
+
+RESPONDE SOLO ESTE JSON:
+{{
+  "validationResult": "VALIDADA | REVISAR | NO_COINCIDE",
+  "description": "string",
+  "categoryProbability": 0,
+  "mismatchReason": "PERSONA_DETECTADA | OTRA_CATEGORIA | IMAGEN_AMBIGUA | CALIDAD_BAJA | CONTENIDO_IRRELEVANTE | null",
+  "warnings": []
+}}
+""".strip()
 
 
-def build_legacy_fields_payload(extracted: Dict[str, Optional[str]], detected_type: str, fields: Dict[str, str]) -> Dict[str, str]:
-    document_number = fields.get("numeroIdentificacion", "")
-    given_names = fields.get("nombres", "")
-    surnames = fields.get("apellidos", "")
-    company_name = fields.get("razonSocial", "")
+# =========================
+# Normalización documentos
+# =========================
 
-    legacy = {
-        "documentType": extracted.get("documentType") or "",
-        "documentNumber": document_number,
-        "givenNames": given_names,
-        "surnames": surnames,
-        "companyName": company_name,
-        "cedula": "",
-        "rif": "",
-    }
+def normalize_field_status(raw_status: Any, detected_type: str, key: str, value: str) -> str:
+    normalized = normalize_upper(str(raw_status or "")).replace(" ", "_")
+    if normalized in {"DETECTED", "NOT_DETECTED", "NOT_APPLICABLE"}:
+        normalized = normalized.lower()
+        if normalized == "detected" and not value:
+            return "not_detected"
+        return normalized
 
-    if detected_type == "CEDULA":
-        legacy["cedula"] = document_number
-    elif detected_type == "RIF":
-        legacy["rif"] = document_number
-
-    return legacy
-
-
-def build_field_status_payload(fields: Dict[str, str], detected_type: str) -> Dict[str, str]:
     applicability = {
-        "nombres": detected_type == "CEDULA",
-        "apellidos": detected_type == "CEDULA",
-        "numeroIdentificacion": detected_type in ("CEDULA", "RIF"),
-        "fechaVencimiento": detected_type in ("CEDULA", "RIF"),
-        "razonSocial": detected_type == "RIF",
+        "CEDULA": {
+            "nombres": True,
+            "apellidos": True,
+            "numeroIdentificacion": True,
+            "fechaVencimiento": True,
+            "razonSocial": False,
+        },
+        "RIF": {
+            "nombres": False,
+            "apellidos": False,
+            "numeroIdentificacion": True,
+            "fechaVencimiento": True,
+            "razonSocial": True,
+        },
+        "ACTA_CONSTITUTIVA": {
+            "nombres": False,
+            "apellidos": False,
+            "numeroIdentificacion": False,
+            "fechaVencimiento": False,
+            "razonSocial": False,
+        },
+        "OTRO": {
+            "nombres": False,
+            "apellidos": False,
+            "numeroIdentificacion": False,
+            "fechaVencimiento": False,
+            "razonSocial": False,
+        },
     }
 
-    status: Dict[str, str] = {}
-    for key, is_applicable in applicability.items():
-        if not is_applicable:
-            status[key] = "not_applicable"
+    is_applicable = applicability.get(detected_type, applicability["OTRO"]).get(key, False)
+    if not is_applicable:
+        return "not_applicable"
+    return "detected" if value else "not_detected"
+
+
+def normalize_document_response(
+    model_output: Dict[str, Any],
+    expected_document_type: str,
+    file_kind: str,
+) -> Dict[str, Any]:
+    detected_type = normalize_doc_type(model_output.get("documentTypeDetected") or "OTRO")
+    expected_type = normalize_doc_type(expected_document_type or "")
+
+    raw_fields = model_output.get("fields") or {}
+    fields = {
+        "nombres": clean_text_value(raw_fields.get("nombres")),
+        "apellidos": clean_text_value(raw_fields.get("apellidos")),
+        "numeroIdentificacion": clean_text_value(raw_fields.get("numeroIdentificacion")),
+        "fechaVencimiento": clean_text_value(raw_fields.get("fechaVencimiento")),
+        "razonSocial": clean_text_value(raw_fields.get("razonSocial")),
+    }
+
+    raw_field_status = model_output.get("fieldStatus") or {}
+    field_status = {
+        key: normalize_field_status(raw_field_status.get(key), detected_type, key, fields[key])
+        for key in fields.keys()
+    }
+
+    warnings = dedupe_list(model_output.get("warnings") if isinstance(model_output.get("warnings"), list) else [])
+    ocr_preview = clean_text_value(model_output.get("ocrTextPreview"))
+
+    # validación por slot: el backend manda, pero aquí se refuerza para no depender ciegamente del modelo
+    if expected_type:
+        is_valid_for_slot = detected_type == expected_type
+        if is_valid_for_slot:
+            slot_reason = f"Documento detectado ({detected_type}) coincide con el esperado ({expected_type})."
         else:
-            status[key] = "detected" if (fields.get(key) or "").strip() else "not_detected"
-    return status
+            label = {
+                "CEDULA": "una cédula",
+                "RIF": "un RIF",
+                "ACTA_CONSTITUTIVA": "un acta constitutiva / registro mercantil",
+            }.get(expected_type, expected_type)
+            slot_reason = f"El archivo cargado no corresponde a {label}."
+    else:
+        is_valid_for_slot = bool(model_output.get("isValidForSlot", True))
+        slot_reason = clean_text_value(model_output.get("slotValidationReason")) or "No se envió expectedDocumentType; se omite validación de slot."
 
+    expiry_alert = False
+    expiry_str = fields["fechaVencimiento"]
+    if expiry_str and detected_type in {"CEDULA", "RIF"}:
+        expiry_date = _parse_expiry_date(expiry_str)
+        if expiry_date:
+            days_left = (expiry_date - date.today()).days
+            doc_label = "RIF" if detected_type == "RIF" else "Cédula"
+            if days_left < 0:
+                warnings.append(f"{doc_label} vencido (venció el {expiry_date.strftime('%d/%m/%Y')}).")
+                expiry_alert = True
+            elif days_left <= 183:
+                warnings.append(f"{doc_label} próximo a vencer (vence el {expiry_date.strftime('%d/%m/%Y')}, en {days_left} días).")
+                expiry_alert = True
 
-def build_confidence_payload(fields: Dict[str, str], legacy_fields: Dict[str, str], avg_conf: float) -> Dict[str, float]:
-    return {
-        "documentNumber": 0.90 if legacy_fields.get("documentNumber") else 0.25,
-        "numeroIdentificacion": 0.90 if fields.get("numeroIdentificacion") else 0.25,
-        "givenNames": 0.85 if legacy_fields.get("givenNames") else 0.25,
-        "surnames": 0.85 if legacy_fields.get("surnames") else 0.25,
-        "companyName": 0.85 if legacy_fields.get("companyName") else 0.25,
-        "ocrAverage": round(avg_conf, 3),
+    warnings = dedupe_list(warnings)
+
+    response = {
+        "expectedDocumentType": expected_type,
+        "documentTypeDetected": detected_type,
+        "isValidForSlot": is_valid_for_slot,
+        "slotValidationReason": slot_reason,
+        "fileKindDetected": file_kind,
+        "isExtractionPerformed": detected_type in {"CEDULA", "RIF"},
+        "fields": fields,
+        "fieldStatus": field_status,
+        "warnings": warnings,
+        "expiryAlert": expiry_alert,
+        "ocrTextPreview": ocr_preview,
     }
 
+    # compatibilidad temporal con el frontend actual
+    response["legacyFields"] = {
+        "documentType": detected_type,
+        "documentNumber": fields["numeroIdentificacion"],
+        "numeroIdentificacion": fields["numeroIdentificacion"],
+        "givenNames": fields["nombres"],
+        "surnames": fields["apellidos"],
+        "nombres": fields["nombres"],
+        "apellidos": fields["apellidos"],
+        "companyName": fields["razonSocial"],
+        "razonSocial": fields["razonSocial"],
+        "fechaVencimiento": fields["fechaVencimiento"],
+        "cedula": fields["numeroIdentificacion"] if detected_type == "CEDULA" else "",
+        "rif": fields["numeroIdentificacion"] if detected_type == "RIF" else "",
+    }
+
+    response["confidence"] = {
+        "nombres": 0.85 if fields["nombres"] else 0.25,
+        "apellidos": 0.85 if fields["apellidos"] else 0.25,
+        "numeroIdentificacion": 0.9 if fields["numeroIdentificacion"] else 0.25,
+        "fechaVencimiento": 0.85 if fields["fechaVencimiento"] else 0.25,
+        "razonSocial": 0.85 if fields["razonSocial"] else 0.25,
+        "ocrAverage": 0.0,
+    }
+
+    return response
+
+
+# =========================
+# Normalización imágenes
+# =========================
+
+def normalize_business_image_response(
+    model_output: Dict[str, Any],
+    requested_category: str,
+) -> Dict[str, Any]:
+    validation_result = normalize_upper(model_output.get("validationResult") or "REVISAR")
+    if validation_result not in {"VALIDADA", "REVISAR", "NO_COINCIDE"}:
+        validation_result = "REVISAR"
+
+    description = clean_text_value(model_output.get("description"))
+    mismatch_reason = clean_text_value(model_output.get("mismatchReason")) or None
+    warnings = dedupe_list(model_output.get("warnings") if isinstance(model_output.get("warnings"), list) else [])
+
+    probability = model_output.get("categoryProbability")
+    try:
+        category_probability = int(float(probability))
+    except Exception:
+        category_probability = 0
+
+    category_probability = max(0, min(100, category_probability))
+
+    return {
+        "requestedCategory": normalize_requested_category(requested_category),
+        "validationResult": validation_result,
+        "description": description,
+        "categoryProbability": category_probability,
+        "mismatchReason": mismatch_reason,
+        "warnings": warnings,
+    }
+
+
+# =========================
+# Handlers lógicos
+# =========================
+
+def build_document_user_content(prompt: str, file_bytes: bytes, mime: str, file_name: str) -> List[Dict[str, Any]]:
+    content: List[Dict[str, Any]] = [{"text": prompt}]
+
+    if mime == "application/pdf":
+        content.append(
+            {
+                "document": {
+                    "format": "pdf",
+                    "name": (file_name or "documento.pdf")[:200],
+                    "source": {"bytes": file_bytes}
+                }
+            }
+        )
+    else:
+        content.append(
+            {
+                "image": {
+                    "format": mime_to_image_format(mime),
+                    "source": {"bytes": file_bytes}
+                }
+            }
+        )
+
+    return content
+
+
+def handle_document_validation(data: Dict[str, Any]) -> Dict[str, Any]:
+    file_b64 = data.get("fileBase64") or data.get("frontImageBase64")
+    file_name = str(data.get("fileName") or "documento")
+    content_type = str(data.get("contentType") or "")
+    expected_document_type = (
+        data.get("expectedDocumentType")
+        or data.get("slotExpected")
+        or data.get("documentTypeExpected")
+        or ""
+    )
+
+    if not file_b64:
+        return safe_json_response(400, {"message": "fileBase64 es requerido"})
+
+    file_bytes, mime_hint = parse_b64_payload(file_b64)
+    mime = detect_mime(mime_hint, content_type, file_name)
+
+    if mime not in ACCEPTED_DOC_MIME:
+        return safe_json_response(
+            400,
+            {"message": "Formato no soportado. Usa PDF, JPG, PNG o WEBP."}
+        )
+
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        return safe_json_response(413, {"message": "El archivo supera el tamaño permitido."})
+
+    prompt = build_document_prompt(expected_document_type)
+    user_content = build_document_user_content(prompt, file_bytes, mime, file_name)
+    model_output = invoke_bedrock(user_content)
+    normalized = normalize_document_response(
+        model_output=model_output,
+        expected_document_type=expected_document_type,
+        file_kind="pdf" if mime == "application/pdf" else "image",
+    )
+    return safe_json_response(200, normalized)
+
+
+def handle_business_image_validation(data: Dict[str, Any]) -> Dict[str, Any]:
+    image_b64 = data.get("imageBase64") or data.get("fileBase64") or data.get("frontImageBase64")
+    file_name = str(data.get("fileName") or "imagen")
+    content_type = str(data.get("contentType") or "")
+    requested_category = str(data.get("requestedCategory") or "")
+
+    if not requested_category:
+        return safe_json_response(400, {"message": "requestedCategory es requerido"})
+
+    if not image_b64:
+        return safe_json_response(400, {"message": "imageBase64 o fileBase64 es requerido"})
+
+    file_bytes, mime_hint = parse_b64_payload(image_b64)
+    mime = detect_mime(mime_hint, content_type, file_name)
+
+    if mime not in ACCEPTED_IMAGE_MIME:
+        return safe_json_response(
+            400,
+            {"message": "Para validación de imágenes usa JPG, PNG o WEBP."}
+        )
+
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        return safe_json_response(413, {"message": "La imagen supera el tamaño permitido."})
+
+    prompt = build_business_image_prompt(requested_category)
+    user_content = [
+        {"text": prompt},
+        {
+            "image": {
+                "format": mime_to_image_format(mime),
+                "source": {"bytes": file_bytes}
+            }
+        }
+    ]
+
+    model_output = invoke_bedrock(user_content)
+    normalized = normalize_business_image_response(model_output, requested_category)
+    return safe_json_response(200, normalized)
+
+
+# =========================
+# Lambda handler principal
+# =========================
 
 def lambda_handler(event, context):
-    method = (event.get("requestContext", {}).get("http", {}).get("method") or event.get("httpMethod") or "").upper()
+    method = (
+        event.get("requestContext", {}).get("http", {}).get("method")
+        or event.get("httpMethod")
+        or ""
+    ).upper()
+
     if method == "OPTIONS":
         return safe_json_response(200, {"ok": True})
 
     try:
         data = parse_event_json(event)
 
-        file_b64 = data.get("fileBase64") or data.get("frontImageBase64")
-        file_name = str(data.get("fileName") or "")
-        content_type = str(data.get("contentType") or "")
+        # Validación de imágenes de negocio
+        if data.get("requestedCategory"):
+            return handle_business_image_validation(data)
 
-        expected_document_type = (
-            data.get("expectedDocumentType")
-            or data.get("slotExpected")
-            or data.get("documentTypeExpected")
-            or ""
-        )
-
-        if not file_b64:
-            return safe_json_response(400, {"message": "fileBase64 es requerido"})
-
-        file_bytes, mime_hint = parse_b64_payload(file_b64)
-        file_kind = detect_file_kind(file_bytes, mime_hint, file_name, content_type)
-
-        lines, confs = textract_lines(file_bytes, file_kind)
-        joined = "\n".join(lines)
-
-        detected_type = detect_document_type(joined)
-
-        if detected_type == "CEDULA":
-            extracted = extract_identity_from_cedula(lines, joined)
-            extraction_performed = True
-        elif detected_type == "RIF":
-            extracted = extract_identity_from_rif(lines, joined)
-            extraction_performed = True
-        elif detected_type == "ACTA_CONSTITUTIVA":
-            extracted = {
-                "documentType": "ACTA_CONSTITUTIVA",
-                "documentNumber": None,
-                "givenNames": None,
-                "surnames": None,
-                "companyName": None,
-            }
-            extraction_performed = False
-        else:
-            extracted = {
-                "documentType": detected_type,
-                "documentNumber": None,
-                "givenNames": None,
-                "surnames": None,
-                "companyName": None,
-            }
-            extraction_performed = False
-
-        slot_ok, slot_reason = is_valid_for_slot(expected_document_type, detected_type)
-
-        warnings: List[str] = []
-        avg_conf = (sum(confs) / len(confs) / 100.0) if confs else 0.0
-        diagnostics = build_extraction_diagnostics(detected_type, lines, extracted, avg_conf)
-
-        if extraction_performed:
-            if not extracted.get("documentNumber"):
-                warnings.append(
-                    "No se pudo extraer número de identificación: no se encontró patrón confiable en el OCR."
-                )
-
-            if detected_type == "CEDULA":
-                if not extracted.get("givenNames"):
-                    warnings.append(diagnostic_warning_for_missing_field("nombres", detected_type, diagnostics))
-                if not extracted.get("surnames"):
-                    warnings.append(diagnostic_warning_for_missing_field("apellidos", detected_type, diagnostics))
-
-            if detected_type == "RIF":
-                if not extracted.get("companyName"):
-                    warnings.append("No se pudo extraer razón social con confianza.")
-
-        expiry_str = ""
-        expiry_alert = False
-
-        if detected_type in ("RIF", "CEDULA"):
-            expiry = detect_document_expiration_date(lines)
-            if expiry:
-                expiry_str = expiry.strftime("%d/%m/%Y")
-                today = date.today()
-                days_left = (expiry - today).days
-                doc_label = "RIF" if detected_type == "RIF" else "Cédula"
-                if days_left < 0:
-                    warnings.append(f"{doc_label} vencido (venció el {expiry.strftime('%d/%m/%Y')}).")
-                    expiry_alert = True
-                elif days_left <= 183:
-                    warnings.append(f"{doc_label} próximo a vencer (vence el {expiry.strftime('%d/%m/%Y')}, en {days_left} días).")
-                    expiry_alert = True
-
-        if avg_conf < 0.70:
-            warnings.append("OCR con baja confianza general.")
-
-        # dedupe warnings
-        warnings = list(dict.fromkeys(warnings))
-
-        fields = build_fields_payload(extracted, detected_type)
-        fields["fechaVencimiento"] = expiry_str
-        field_status = build_field_status_payload(fields, detected_type)
-        legacy_fields = build_legacy_fields_payload(extracted, detected_type, fields)
-        confidence = build_confidence_payload(fields, legacy_fields, avg_conf)
+        # Validación documental
+        if data.get("expectedDocumentType") or data.get("slotExpected") or data.get("documentTypeExpected"):
+            return handle_document_validation(data)
 
         return safe_json_response(
-            200,
+            400,
             {
-                "expectedDocumentType": normalize_doc_type(expected_document_type) if expected_document_type else "",
-                "documentTypeDetected": normalize_doc_type(detected_type),
-                "isValidForSlot": slot_ok,
-                "slotValidationReason": slot_reason,
-                "fileKindDetected": file_kind,
-                "isExtractionPerformed": extraction_performed,
-                "fields": fields,
-                "fieldStatus": field_status,
-                # Compatibilidad hacia atrás (transición frontend)
-                "legacyFields": legacy_fields,
-                "confidence": confidence,
-                "warnings": warnings,
-                "expiryAlert": expiry_alert,
-                "ocrTextPreview": "\n".join(lines[:20]),  # útil para depurar sin devolver todo
-                "diagnostics": diagnostics,
+                "message": "No se pudo determinar el tipo de operación. Envía requestedCategory o expectedDocumentType."
             },
         )
 
     except Exception as exc:
-        return safe_json_response(500, {"message": "Error procesando documento", "error": str(exc)})
+        return safe_json_response(
+            500,
+            {
+                "message": "Error procesando solicitud con Bedrock.",
+                "error": str(exc),
+            },
+        )

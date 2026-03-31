@@ -13,7 +13,8 @@ const stateLabel: Record<CommerceImageAnalysis['validationResult'], string> = {
   'NO COINCIDE': 'No coincide'
 };
 
-const shouldShowAiWarning = (aiGeneratedProbability: number, threshold = 70): boolean => aiGeneratedProbability >= threshold;
+const shouldShowAiWarning = (aiGeneratedProbability?: number, threshold = 70): boolean =>
+  typeof aiGeneratedProbability === 'number' && aiGeneratedProbability >= threshold;
 
 type Props = {
   previewUrl?: string;
@@ -60,6 +61,7 @@ export function ImageValidationCard({ previewUrl, requestedLabel, analyzing, ana
       ? 'La imagen no corresponde al inventario de un negocio.'
       : 'No se pudo confirmar que la imagen corresponda al inventario del negocio.';
   })();
+  const hasAiProbability = typeof analysis.aiGeneratedProbability === 'number';
   const showAiBanner = shouldShowAiWarning(analysis.aiGeneratedProbability);
 
   return (
@@ -90,21 +92,23 @@ export function ImageValidationCard({ previewUrl, requestedLabel, analyzing, ana
 
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="rounded-full bg-[#F5F9FD] px-3 py-1 font-semibold text-[#111111]">{Math.round(analysis.categoryProbability)}% coincidencia</span>
-          <span
-            className={`rounded-full px-3 py-1 font-semibold ${
-              analysis.aiGeneratedProbability >= 70
-                ? 'bg-amber-100 text-amber-800'
-                : 'bg-[#F5F9FD] text-[#111111]'
-            }`}
-          >
-            {Math.round(analysis.aiGeneratedProbability)}% prob. IA
-          </span>
+          {hasAiProbability ? (
+            <span
+              className={`rounded-full px-3 py-1 font-semibold ${
+                (analysis.aiGeneratedProbability ?? 0) >= 70
+                  ? 'bg-amber-100 text-amber-800'
+                  : 'bg-[#F5F9FD] text-[#111111]'
+              }`}
+            >
+              {Math.round(analysis.aiGeneratedProbability ?? 0)}% prob. IA
+            </span>
+          ) : null}
         </div>
 
         {mainBanner ? <AlertBanner type={state === 'NO COINCIDE' ? 'error' : 'warning'}>{mainBanner}</AlertBanner> : null}
         {showAiBanner ? (
           <AlertBanner type="warning">
-            Probabilidad alta de imagen generada por inteligencia artificial ({Math.round(analysis.aiGeneratedProbability)}%).
+            Probabilidad alta de imagen generada por inteligencia artificial ({Math.round(analysis.aiGeneratedProbability ?? 0)}%).
           </AlertBanner>
         ) : null}
       </div>

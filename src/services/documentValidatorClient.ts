@@ -24,6 +24,11 @@ type LambdaFieldStatus = {
 };
 
 type LambdaConfidence = {
+  nombres?: number;
+  apellidos?: number;
+  numeroIdentificacion?: number;
+  fechaVencimiento?: number;
+  razonSocial?: number;
   documentNumber?: number;
   givenNames?: number;
   surnames?: number;
@@ -70,7 +75,14 @@ export type DocumentValidationResult = {
     razonSocial: string;
   };
   fieldStatus: Required<LambdaFieldStatus>;
-  confidence: Required<Pick<LambdaConfidence, 'documentNumber' | 'givenNames' | 'surnames' | 'companyName' | 'ocrAverage'>>;
+  confidence: {
+    nombres: number;
+    apellidos: number;
+    numeroIdentificacion: number;
+    fechaVencimiento: number;
+    razonSocial: number;
+    ocrAverage: number;
+  };
   expiryAlert: boolean;
   ocrTextPreview: string;
   warnings: string[];
@@ -187,10 +199,11 @@ const toSafeResult = (payload: LambdaFlatResponse, expectedDocumentType: string)
     fields: normalizedFields,
     fieldStatus,
     confidence: {
-      documentNumber: confidence.documentNumber ?? 0.25,
-      givenNames: confidence.givenNames ?? 0.25,
-      surnames: confidence.surnames ?? 0.25,
-      companyName: confidence.companyName ?? 0.25,
+      nombres: confidence.nombres ?? confidence.givenNames ?? 0.25,
+      apellidos: confidence.apellidos ?? confidence.surnames ?? 0.25,
+      numeroIdentificacion: confidence.numeroIdentificacion ?? confidence.documentNumber ?? 0.25,
+      fechaVencimiento: confidence.fechaVencimiento ?? 0.25,
+      razonSocial: confidence.razonSocial ?? confidence.companyName ?? 0.25,
       ocrAverage: confidence.ocrAverage ?? 0.0
     },
     expiryAlert: Boolean(payload.expiryAlert),
@@ -218,7 +231,7 @@ export async function validateDocumentWithLambda(file: File, docKind: DocKind): 
   const isPdf = contentType.includes('pdf') || file.name.toLowerCase().endsWith('.pdf');
 
   const controller = new AbortController();
-  // PDF puede tardar más por Textract asíncrono; imágenes suelen responder más rápido.
+  // PDF puede tardar más en el procesamiento backend; imágenes suelen responder más rápido.
   const requestTimeoutMs = isPdf ? 240000 : 90000;
   const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
 
