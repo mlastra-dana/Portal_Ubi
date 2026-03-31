@@ -155,23 +155,35 @@ const toSafeResult = (payload: LambdaFlatResponse, expectedDocumentType: string)
   const resolvedDocType = payload.documentTypeDetected ?? 'DESCONOCIDO';
   const confidence = payload.confidence ?? {};
 
-  const normalizedFields = {
-    nombres: (fields.nombres ?? fields.givenNames ?? legacy.nombres ?? legacy.givenNames ?? '').trim(),
-    apellidos: (fields.apellidos ?? fields.surnames ?? legacy.apellidos ?? legacy.surnames ?? '').trim(),
-    numeroIdentificacion: (
-      fields.numeroIdentificacion ??
-      fields.cedula ??
-      fields.rif ??
-      fields.documentNumber ??
-      legacy.numeroIdentificacion ??
-      legacy.cedula ??
-      legacy.rif ??
-      legacy.documentNumber ??
-      ''
-    ).trim(),
-    fechaVencimiento: (fields.fechaVencimiento ?? legacy.fechaVencimiento ?? '').trim(),
-    razonSocial: (fields.razonSocial ?? fields.companyName ?? legacy.razonSocial ?? legacy.companyName ?? '').trim()
+  const primaryFields = {
+    nombres: (fields.nombres ?? '').trim(),
+    apellidos: (fields.apellidos ?? '').trim(),
+    numeroIdentificacion: (fields.numeroIdentificacion ?? '').trim(),
+    fechaVencimiento: (fields.fechaVencimiento ?? '').trim(),
+    razonSocial: (fields.razonSocial ?? '').trim()
   };
+
+  const primaryHasAnyValue = Object.values(primaryFields).some((value) => Boolean(value));
+
+  const normalizedFields = primaryHasAnyValue
+    ? primaryFields
+    : {
+        // Compatibilidad temporal: usar legacy solo si fields nuevo llega vacío
+        nombres: (legacy.nombres ?? legacy.givenNames ?? fields.givenNames ?? '').trim(),
+        apellidos: (legacy.apellidos ?? legacy.surnames ?? fields.surnames ?? '').trim(),
+        numeroIdentificacion: (
+          legacy.numeroIdentificacion ??
+          legacy.cedula ??
+          legacy.rif ??
+          legacy.documentNumber ??
+          fields.cedula ??
+          fields.rif ??
+          fields.documentNumber ??
+          ''
+        ).trim(),
+        fechaVencimiento: (legacy.fechaVencimiento ?? '').trim(),
+        razonSocial: (legacy.razonSocial ?? legacy.companyName ?? fields.companyName ?? '').trim()
+      };
 
   const fieldStatus: Required<LambdaFieldStatus> = {
     nombres: payload.fieldStatus?.nombres ?? (resolvedDocType === 'CEDULA' ? (normalizedFields.nombres ? 'detected' : 'not_detected') : 'not_applicable'),

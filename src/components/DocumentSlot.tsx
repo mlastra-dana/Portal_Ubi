@@ -16,7 +16,7 @@ type Props = {
 
 const ACCEPT = '.pdf,image/png,image/jpeg,image/jpg';
 
-const emptyFields = { nombres: null, apellidos: null, numeroId: null, fechaVencimiento: null };
+const emptyFields = { nombres: null, apellidos: null, numeroId: null, fechaVencimiento: null, razonSocial: null };
 
 const DOC_NUMBER_CONFIDENCE_WARNING = 'No se pudo extraer el número de documento con confianza.';
 
@@ -213,7 +213,8 @@ export function DocumentSlot({
           nombres: (docKind === 'RIF' ? (razonSocial || nombresRaw) : nombres) || null,
           apellidos: (docKind === 'RIF' ? null : apellidos) || null,
           numeroId: numeroId || null,
-          fechaVencimiento: backend.fields.fechaVencimiento || null
+          fechaVencimiento: backend.fields.fechaVencimiento || null,
+          razonSocial: razonSocial || null
         },
         validationStatus,
         validationMessage,

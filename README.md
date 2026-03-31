@@ -49,6 +49,7 @@ La Lambda responde (resumen):
 Regla del frontend:
 - Solo mapea campos importantes desde `fields` + `fieldStatus`.
 - No reconstruye nombres/IDs desde `ocrTextPreview`.
+- `legacyFields` solo se usa como fallback temporal cuando `fields` llega vacío.
 
 ## Contrato de imágenes de negocio
 
@@ -62,6 +63,8 @@ Respuesta esperada:
   "validationResult": "VALIDADA|REVISAR|NO_COINCIDE",
   "description": "",
   "categoryProbability": 0,
+  "aiGeneratedProbability": 0,
+  "aiGeneratedLabel": "NO_EVIDENTE|POSIBLE_IA|ALTA_SOSPECHA_IA",
   "mismatchReason": "PERSONA_DETECTADA|OTRA_CATEGORIA|IMAGEN_AMBIGUA|CALIDAD_BAJA|CONTENIDO_IRRELEVANTE|null",
   "warnings": []
 }
@@ -70,7 +73,8 @@ Respuesta esperada:
 El frontend muestra:
 - Estado de validación.
 - `% coincidencia`.
-- `% prob. IA` solo si el backend lo incluye en la respuesta.
+- `% prob. IA`.
+- Etiqueta IA (`NO_EVIDENTE`, `POSIBLE_IA`, `ALTA_SOSPECHA_IA`) con aviso suave/fuerte.
 - Warnings.
 
 ## Variables de entorno

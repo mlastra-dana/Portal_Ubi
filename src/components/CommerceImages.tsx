@@ -143,14 +143,18 @@ export function CommerceImages({ onChange, highlightMissing = false, highlightNo
         onChange?.(next);
         return next;
       });
-    } catch {
+    } catch (error) {
+      const detailedMessage =
+        error instanceof Error && error.message
+          ? error.message
+          : 'No se pudo analizar la imagen.';
       setItems((prev) => {
         const next = prev.map((item) => {
           if (item.kind !== kind || item.previewUrl !== expectedPreviewUrl || item.analysisToken !== analysisToken) return item;
           return {
             ...item,
             analyzing: false,
-            analysisError: 'No se pudo analizar la imagen.',
+            analysisError: detailedMessage,
             validationStatus: 'REVISAR' as const,
             validationMessage: `Esta imagen no corresponde a ${item.label.toLowerCase()}.`
           };

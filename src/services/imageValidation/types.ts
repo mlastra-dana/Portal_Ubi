@@ -2,6 +2,7 @@ export type RequestedBusinessCategory = 'FACHADA' | 'INTERIOR' | 'INVENTARIO';
 export type DetectedBusinessCategory = RequestedBusinessCategory | 'PERSONA' | 'NO_CLASIFICADA';
 export type ValidationResult = 'VALIDADA' | 'REVISAR' | 'NO COINCIDE';
 export type MismatchReason = 'PERSONA_DETECTADA' | 'OTRA_CATEGORIA' | 'IMAGEN_AMBIGUA' | 'CALIDAD_BAJA' | 'CONTENIDO_IRRELEVANTE' | null;
+export type AiGeneratedLabel = 'NO_EVIDENTE' | 'POSIBLE_IA' | 'ALTA_SOSPECHA_IA';
 
 export type PerceptionFeatures = {
   personVisible: boolean;
@@ -24,6 +25,7 @@ export type BusinessImageAnalysisResult = {
   categoryMatch: boolean;
   categoryProbability: number;
   aiGeneratedProbability?: number;
+  aiGeneratedLabel?: AiGeneratedLabel;
   validationResult: ValidationResult;
   mismatchReason: MismatchReason;
   warnings: string[];

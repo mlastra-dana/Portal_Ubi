@@ -1,4 +1,4 @@
-import type { BusinessImageAnalysisResult, MismatchReason, RequestedBusinessCategory } from './types';
+import type { AiGeneratedLabel, BusinessImageAnalysisResult, MismatchReason, RequestedBusinessCategory } from './types';
 
 type LambdaImageValidationResponse = {
   requestedCategory?: RequestedBusinessCategory;
@@ -6,6 +6,7 @@ type LambdaImageValidationResponse = {
   description?: string;
   categoryProbability?: number;
   aiGeneratedProbability?: number;
+  aiGeneratedLabel?: AiGeneratedLabel | string;
   mismatchReason?: MismatchReason;
   warnings?: string[];
   message?: string;
@@ -48,6 +49,14 @@ const normalizeValidationResult = (value?: string): BusinessImageAnalysisResult[
   if (value === 'VALIDADA') return 'VALIDADA';
   if (value === 'NO_COINCIDE' || value === 'NO COINCIDE') return 'NO COINCIDE';
   return 'REVISAR';
+};
+
+const normalizeAiGeneratedLabel = (value?: string): AiGeneratedLabel | undefined => {
+  const normalized = (value ?? '').toUpperCase().trim();
+  if (normalized === 'NO_EVIDENTE') return 'NO_EVIDENTE';
+  if (normalized === 'POSIBLE_IA') return 'POSIBLE_IA';
+  if (normalized === 'ALTA_SOSPECHA_IA') return 'ALTA_SOSPECHA_IA';
+  return undefined;
 };
 
 const isAbortLikeError = (error: unknown): boolean => {
@@ -102,6 +111,7 @@ export const analyzeBusinessImage = async (
     const categoryProbability = Number.isFinite(payload.categoryProbability) ? Number(payload.categoryProbability) : 0;
     const hasAiProbability = Number.isFinite(payload.aiGeneratedProbability);
     const aiGeneratedProbability = hasAiProbability ? Number(payload.aiGeneratedProbability) : undefined;
+    const aiGeneratedLabel = normalizeAiGeneratedLabel(payload.aiGeneratedLabel);
     const warnings = Array.isArray(payload.warnings) ? payload.warnings : [];
     const mismatchReason = payload.mismatchReason ?? null;
 
@@ -113,6 +123,7 @@ export const analyzeBusinessImage = async (
       categoryMatch: validationResult === 'VALIDADA',
       categoryProbability,
       aiGeneratedProbability,
+      aiGeneratedLabel,
       validationResult,
       mismatchReason,
       warnings

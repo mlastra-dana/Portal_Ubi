@@ -112,7 +112,7 @@ export default function Recaudos() {
       setJuridicaRifEmpresa('');
       return;
     }
-    const razonSocial = rif.fields.nombres ?? '';
+    const razonSocial = rif.fields.razonSocial ?? rif.fields.nombres ?? '';
     setJuridicaRazonSocial(razonSocial);
     const rifNumero = rif.fields.numeroId;
     setJuridicaRifEmpresa(rifNumero ?? '');

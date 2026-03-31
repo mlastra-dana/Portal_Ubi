@@ -16,6 +16,12 @@ const stateLabel: Record<CommerceImageAnalysis['validationResult'], string> = {
 const shouldShowAiWarning = (aiGeneratedProbability?: number, threshold = 70): boolean =>
   typeof aiGeneratedProbability === 'number' && aiGeneratedProbability >= threshold;
 
+const aiLabelText: Record<NonNullable<CommerceImageAnalysis['aiGeneratedLabel']>, string> = {
+  NO_EVIDENTE: 'IA no evidente',
+  POSIBLE_IA: 'Posible IA',
+  ALTA_SOSPECHA_IA: 'Alta sospecha IA'
+};
+
 type Props = {
   previewUrl?: string;
   requestedLabel: string;
@@ -62,7 +68,10 @@ export function ImageValidationCard({ previewUrl, requestedLabel, analyzing, ana
       : 'No se pudo confirmar que la imagen corresponda al inventario del negocio.';
   })();
   const hasAiProbability = typeof analysis.aiGeneratedProbability === 'number';
+  const aiLabel = analysis.aiGeneratedLabel;
   const showAiBanner = shouldShowAiWarning(analysis.aiGeneratedProbability);
+  const showSoftAiWarning = aiLabel === 'POSIBLE_IA';
+  const showStrongAiWarning = aiLabel === 'ALTA_SOSPECHA_IA';
 
   return (
     <div className="animate-in fade-in-0 slide-in-from-bottom-1 space-y-4">
@@ -92,21 +101,44 @@ export function ImageValidationCard({ previewUrl, requestedLabel, analyzing, ana
 
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="rounded-full bg-[#F5F9FD] px-3 py-1 font-semibold text-[#111111]">{Math.round(analysis.categoryProbability)}% coincidencia</span>
-          {hasAiProbability ? (
+          <span
+            className={`rounded-full px-3 py-1 font-semibold ${
+              showStrongAiWarning || (hasAiProbability && (analysis.aiGeneratedProbability ?? 0) >= 70)
+                ? 'bg-amber-100 text-amber-800'
+                : showSoftAiWarning
+                  ? 'bg-amber-50 text-amber-700'
+                : 'bg-[#F5F9FD] text-[#111111]'
+            }`}
+          >
+            {hasAiProbability ? `${Math.round(analysis.aiGeneratedProbability ?? 0)}% prob. IA` : 'Prob. IA: No disponible'}
+          </span>
+          {aiLabel ? (
             <span
               className={`rounded-full px-3 py-1 font-semibold ${
-                (analysis.aiGeneratedProbability ?? 0) >= 70
+                aiLabel === 'ALTA_SOSPECHA_IA'
                   ? 'bg-amber-100 text-amber-800'
-                  : 'bg-[#F5F9FD] text-[#111111]'
+                  : aiLabel === 'POSIBLE_IA'
+                    ? 'bg-amber-50 text-amber-700'
+                    : 'bg-emerald-50 text-emerald-700'
               }`}
             >
-              {Math.round(analysis.aiGeneratedProbability ?? 0)}% prob. IA
+              {aiLabelText[aiLabel]}
             </span>
           ) : null}
         </div>
 
         {mainBanner ? <AlertBanner type={state === 'NO COINCIDE' ? 'error' : 'warning'}>{mainBanner}</AlertBanner> : null}
-        {showAiBanner ? (
+        {showSoftAiWarning ? (
+          <AlertBanner type="warning">
+            Esta imagen presenta indicios de posible generación por IA.
+          </AlertBanner>
+        ) : null}
+        {showStrongAiWarning ? (
+          <AlertBanner type="warning">
+            Alta sospecha de imagen generada por IA. Requiere revisión manual.
+          </AlertBanner>
+        ) : null}
+        {!aiLabel && showAiBanner ? (
           <AlertBanner type="warning">
             Probabilidad alta de imagen generada por inteligencia artificial ({Math.round(analysis.aiGeneratedProbability ?? 0)}%).
           </AlertBanner>

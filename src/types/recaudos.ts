@@ -5,6 +5,7 @@ export type OcrExtractedFields = {
   apellidos: string | null;
   numeroId: string | null;
   fechaVencimiento: string | null;
+  razonSocial?: string | null;
 };
 
 export type UploadedDocumentResult = {
@@ -28,6 +29,7 @@ export type BusinessImageCategory = 'FACHADA' | 'INTERIOR' | 'INVENTARIO';
 export type DetectedBusinessImageCategory = BusinessImageCategory | 'PERSONA' | 'NO_CLASIFICADA';
 export type ValidationResult = 'VALIDADA' | 'REVISAR' | 'NO COINCIDE';
 export type MismatchReason = 'PERSONA_DETECTADA' | 'OTRA_CATEGORIA' | 'IMAGEN_AMBIGUA' | 'CALIDAD_BAJA' | 'CONTENIDO_IRRELEVANTE' | null;
+export type AiGeneratedLabel = 'NO_EVIDENTE' | 'POSIBLE_IA' | 'ALTA_SOSPECHA_IA';
 export type PerceptionFeatures = {
   personVisible: boolean;
   buildingExterior: boolean;
@@ -44,6 +46,7 @@ export type CommerceImageAnalysis = {
   categoryProbability: number;
   expectedTypeProbability: number;
   aiGeneratedProbability?: number;
+  aiGeneratedLabel?: AiGeneratedLabel;
   validationResult: ValidationResult;
   mismatchReason: MismatchReason;
   warnings: string[];
