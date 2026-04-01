@@ -16,6 +16,7 @@ DOCUMENT_OCR_MAX_WAIT_SECONDS = int(os.getenv("DOCUMENT_OCR_MAX_WAIT_SECONDS", "
 BEDROCK_REGION = os.getenv("BEDROCK_REGION") or os.getenv("AWS_REGION") or "us-east-1"
 BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "").strip()
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(15 * 1024 * 1024)))
+AI_DETECTION_MODE = (os.getenv("AI_DETECTION_MODE", "strict") or "strict").strip().lower()
 
 bedrock = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
 
@@ -167,6 +168,101 @@ def clean_text_value(value: Any) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def is_strict_ai_mode() -> bool:
+    return AI_DETECTION_MODE in {"strict", "high_sensitivity", "agresivo", "aggressive"}
+
+
+def clamp_probability(value: Any, default: int = 0) -> int:
+    try:
+        normalized = int(float(value))
+    except Exception:
+        normalized = default
+    return max(0, min(100, normalized))
+
+
+def normalize_ai_generated_label(raw_label: Any, probability: int, strict_mode: bool = False) -> str:
+    high_threshold = 65 if strict_mode else 70
+    medium_threshold = 35 if strict_mode else 40
+
+    normalized = normalize_upper(str(raw_label or "")).replace(" ", "_")
+    if normalized == "ALTA_SOSPECHA_IA":
+        probability = max(probability, high_threshold)
+    elif normalized == "POSIBLE_IA":
+        probability = max(probability, medium_threshold)
+    if probability >= high_threshold:
+        return "ALTA_SOSPECHA_IA"
+    if probability >= medium_threshold:
+        return "POSIBLE_IA"
+    return "NO_EVIDENTE"
+
+
+def calibrate_ai_probability(
+    raw_probability: Any,
+    raw_label: Any,
+    description: str,
+    warnings: List[str],
+    strict_mode: bool = False,
+) -> int:
+    """
+    Calibra el score IA para evitar valores demasiado optimistas por defecto.
+    Prioriza la salida del modelo, pero aplica umbrales mínimos cuando hay señales claras.
+    """
+    probability = clamp_probability(raw_probability, default=0)
+    label = normalize_upper(str(raw_label or "")).replace(" ", "_")
+    text_blob = normalize_upper(" ".join([description] + warnings))
+
+    strong_signals = [
+        "TEXTO DEFORMADO",
+        "TEXTO ILEGIBLE",
+        "MARCAS INCONSISTENTES",
+        "LOGO INCONSISTENTE",
+        "ARTEFACTOS",
+        "REPETICION NO NATURAL",
+        "ELEMENTOS IMPOSIBLES",
+        "ANOMALIA VISUAL",
+    ]
+    medium_signals = [
+        "PATRON REPETITIVO",
+        "TEXTURA EXTRAÑA",
+        "BORDES IRREGULARES",
+        "ILUMINACION POCO NATURAL",
+        "DETALLE INCONSISTENTE",
+        "ASPECTO SINTETICO",
+        "PARECE GENERADA",
+        "POSIBLE IA",
+    ]
+
+    has_strong_signal = any(token in text_blob for token in strong_signals)
+    has_medium_signal = any(token in text_blob for token in medium_signals)
+
+    # Respetar una etiqueta explícita del modelo.
+    if label == "ALTA_SOSPECHA_IA":
+        probability = max(probability, 70)
+    elif label == "POSIBLE_IA":
+        probability = max(probability, 40)
+
+    # Forzar mínimos cuando se reportan señales visuales.
+    if has_strong_signal:
+        probability = max(probability, 75)
+    elif has_medium_signal:
+        probability = max(probability, 45)
+
+    if strict_mode:
+        # Modo estricto: más sensibilidad y menor dependencia de valores bajos por defecto.
+        probability = int(round((probability * 1.6) + 12))
+        probability = max(probability, 18)
+        if label == "ALTA_SOSPECHA_IA":
+            probability = max(probability, 75)
+        elif label == "POSIBLE_IA":
+            probability = max(probability, 50)
+        if has_strong_signal:
+            probability = max(probability, 82)
+        elif has_medium_signal:
+            probability = max(probability, 60)
+
+    return max(0, min(100, probability))
 
 
 def _parse_expiry_date(text: str) -> Optional[date]:
@@ -323,12 +419,25 @@ REGLAS:
   validationResult = "NO_COINCIDE"
 - Si es ambigua o poco clara:
   validationResult = "REVISAR"
+- Evalúa si hay indicios visuales de IA generativa (texto deformado, marcas inconsistentes, artefactos, repetición no natural).
+- No uses valores por defecto fijos (ej. 5, 10, 50) si no están justificados por evidencia visual.
+- Usa el rango completo 0-100:
+  - 0-20: sin indicios relevantes
+  - 21-39: señales leves, no concluyentes
+  - 40-69: sospecha moderada
+  - 70-100: alta sospecha
+- aiGeneratedProbability debe ser entero entre 0 y 100.
+- Si aiGeneratedProbability >= 70, aiGeneratedLabel = "ALTA_SOSPECHA_IA".
+- Si aiGeneratedProbability entre 40 y 69, aiGeneratedLabel = "POSIBLE_IA".
+- Si aiGeneratedProbability <= 39, aiGeneratedLabel = "NO_EVIDENTE".
 
 RESPONDE SOLO ESTE JSON:
 {{
   "validationResult": "VALIDADA | REVISAR | NO_COINCIDE",
   "description": "string",
   "categoryProbability": 0,
+  "aiGeneratedProbability": 0,
+  "aiGeneratedLabel": "NO_EVIDENTE | POSIBLE_IA | ALTA_SOSPECHA_IA",
   "mismatchReason": "PERSONA_DETECTADA | OTRA_CATEGORIA | IMAGEN_AMBIGUA | CALIDAD_BAJA | CONTENIDO_IRRELEVANTE | null",
   "warnings": []
 }}
@@ -492,6 +601,7 @@ def normalize_business_image_response(
     model_output: Dict[str, Any],
     requested_category: str,
 ) -> Dict[str, Any]:
+    strict_mode = is_strict_ai_mode()
     validation_result = normalize_upper(model_output.get("validationResult") or "REVISAR")
     if validation_result not in {"VALIDADA", "REVISAR", "NO_COINCIDE"}:
         validation_result = "REVISAR"
@@ -500,19 +610,28 @@ def normalize_business_image_response(
     mismatch_reason = clean_text_value(model_output.get("mismatchReason")) or None
     warnings = dedupe_list(model_output.get("warnings") if isinstance(model_output.get("warnings"), list) else [])
 
-    probability = model_output.get("categoryProbability")
-    try:
-        category_probability = int(float(probability))
-    except Exception:
-        category_probability = 0
-
-    category_probability = max(0, min(100, category_probability))
+    category_probability = clamp_probability(model_output.get("categoryProbability"), default=0)
+    ai_generated_probability = calibrate_ai_probability(
+        raw_probability=model_output.get("aiGeneratedProbability"),
+        raw_label=model_output.get("aiGeneratedLabel"),
+        description=description,
+        warnings=warnings,
+        strict_mode=strict_mode,
+    )
+    ai_generated_label = normalize_ai_generated_label(
+        model_output.get("aiGeneratedLabel"),
+        ai_generated_probability,
+        strict_mode=strict_mode,
+    )
 
     return {
         "requestedCategory": normalize_requested_category(requested_category),
         "validationResult": validation_result,
         "description": description,
         "categoryProbability": category_probability,
+        "aiGeneratedProbability": ai_generated_probability,
+        "aiGeneratedLabel": ai_generated_label,
+        "aiDetectionMode": "STRICT" if strict_mode else "BALANCED",
         "mismatchReason": mismatch_reason,
         "warnings": warnings,
     }
